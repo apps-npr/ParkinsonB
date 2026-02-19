@@ -1,0 +1,11 @@
+[
+    { "id": "D01", "name": "Madopar HBS 100/25", "onset": 120, "duration": 5, "type": "L-Dopa (CR)" },
+    { "id": "D02", "name": "Madopar dispersible 100/25", "onset": 15, "duration": 2.5, "type": "L-Dopa (Fast)" },
+    { "id": "D03", "name": "Sinemet 25/100", "onset": 30, "duration": 3.5, "type": "L-Dopa (IR)" },
+    { "id": "D04", "name": "Levopar 200/50", "onset": 30, "duration": 4, "type": "L-Dopa (IR)" },
+    { "id": "D05", "name": "Requip PD 24h (2mg)", "onset": 120, "duration": 24, "type": "Agonist (ER)" },
+    { "id": "D06", "name": "Suplac (Bromocriptine 2.5mg)", "onset": 60, "duration": 6, "type": "Agonist" },
+    { "id": "D07", "name": "Comtan 200mg", "onset": 60, "duration": 1.5, "type": "COMT" },
+    { "id": "D08", "name": "Trihexyphenidyl 2mg", "onset": 60, "duration": 6, "type": "Anti-Choc" },
+    { "id": "D09", "name": "Rasagiline 1mg", "onset": 60, "duration": 24, "type": "MAO-B" }
+]
