@@ -199,7 +199,7 @@ function saveADR() {
 
     if(reportDetails.length > 0) {
         fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addLog', PD_No: currentPatientId, Date: new Date().toLocaleDateString('th-TH'), Event_Type: 'DRPs/ADR Check', Start_Time: '-', End_Time: '-', Reporter: 'Pharmacist', Detail_Note: reportDetails.join(' | ') }) })
-          .then(res => res.json()).then(data => alert('บันทึกข้อมูลคัดกรองลงฐานข้อมูลแล้ว (Log ID: ' + data.logId + ')')).catch(err => alert('เกิดข้อผิดพลาดในการบันทึก ADR'));
+          .then(res => res.json()).then(data => alert('บันทึกข้อมูลคัดกรองลงฐานข้อมูลแล้ว')).catch(err => alert('เกิดข้อผิดพลาดในการบันทึก ADR'));
     } else alert('บันทึกข้อมูลคัดกรองแล้ว (ไม่ได้ส่งฐานข้อมูล)');
 }
 
@@ -236,7 +236,7 @@ function analyzeRegimen() {
     document.getElementById('aiRecommendationArea').classList.remove('d-none');
 }
 
-// 🌟 สมองกลคำนวณ LEDD (บวก 33% อัตโนมัติถ้าเจอ Comtan ในมื้อเดียวกัน)
+// 🌟 สมองกลคำนวณ LEDD (พร้อมแก้ไขบั๊ก HBS และคูณ Comtan 33%)
 function calculateLEDD(medsList) {
     let totalLdopa = 0;
     let breakdowns = [];
@@ -253,7 +253,6 @@ function calculateLEDD(medsList) {
     for (let t in timeGroups) {
         let medsAtTime = timeGroups[t];
         
-        // เช็คว่าในมื้อนี้มียา Comtan (Entacapone) กินอยู่ด้วยหรือไม่
         let hasComtan = medsAtTime.some(m => {
             let n = (m.Trade_Name || m.name || "").toLowerCase();
             return n.includes('comtan') || n.includes('entacapone');
@@ -274,9 +273,10 @@ function calculateLEDD(medsList) {
 
             if (name.includes('madopar') || name.includes('vopar')) {
                 isLdopa = true;
-                if (name.includes('125') || name.includes('100/25') || name.includes(' 100')) baseDose = 100;
+                // 🌟 ดักจับ HBS ก่อนเสมอตามที่คุณหมอแนะนำ
+                if (name.includes('hbs')) baseDose = 100 * 0.75; 
+                else if (name.includes('125') || name.includes('100/25') || name.includes(' 100')) baseDose = 100;
                 else if (name.includes('250') || name.includes('200/50')) baseDose = 200;
-                else if (name.includes('hbs')) baseDose = 100 * 0.75; 
                 else baseDose = 100; 
             } 
             else if (name.includes('sinemet') || name.includes('levodopa')) {
@@ -300,14 +300,12 @@ function calculateLEDD(medsList) {
                 }
             }
 
-            // ถ้ายานี้เป็น Levodopa ให้นำไปคูณกับจำนวนเม็ด
             if (isLdopa && baseDose > 0) {
                 let finalDose = baseDose * multiplier;
-                // ถ้าในมื้อนี้มี Comtan กินอยู่ด้วย ให้คูณ 1.33 เพิ่มเข้าไป
                 if (hasComtan) {
                     finalDose = finalDose * 1.33;
                 }
-                finalDose = Math.round(finalDose); // ปัดเศษให้เป็นจำนวนเต็ม
+                finalDose = Math.round(finalDose); 
                 totalLdopa += finalDose;
                 breakdowns.push(finalDose);
             }
@@ -379,10 +377,14 @@ function generateReport() {
     html += `<div class="report-header text-success">📌 แผนการจัดตารางยาใหม่:</div><ul style="margin-bottom: 2px;">`;
     for(let k in meds) html += `<li><strong>${k}</strong>: ${meds[k].sort().join(', ')}</li>`;
     
-    // 🌟 แสดง Total Levodopa แบบมีวิธีคิด ประหยัดเนื้อที่ ไม่มีคำว่าเก่า/ใหม่
+    // 🌟 แสดง Total Levodopa แบบประหยัดเนื้อที่ พร้อมปุ่ม "ดูการคำนวณ" ที่ซ่อนได้และไม่ปรินต์ออกกระดาษ
     if(newDoseObj.ldopa > 0) {
         html += `<li class="mt-2 text-primary" style="list-style-type: none; margin-left: -20px; font-size: 11px;">
-            <strong>💊 Total Levodopa Dose:</strong> ${newDoseObj.breakdown} = <b>${newDoseObj.ldopa} mg/day</b>
+            <strong>💊 Total Levodopa Dose:</strong> <b>${newDoseObj.ldopa} mg/day</b>
+            <span class="badge bg-secondary ms-2 no-print" style="cursor:pointer;" onclick="document.getElementById('ledd-breakdown').classList.toggle('d-none')">🔍 ดูการคำนวณ</span>
+            <div id="ledd-breakdown" class="d-none text-muted mt-1" style="font-size: 10px;">
+                <i>วิธีคิด: ${newDoseObj.breakdown} = ${newDoseObj.ldopa} mg</i>
+            </div>
         </li>`;
     }
     html += `</ul>`;
