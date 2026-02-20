@@ -15,8 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
         d.forEach(x=>s.add(new Option(x.name,x.id))); 
     }).catch(e=>alert("โหลดฐานข้อมูลยาล้มเหลว"));
 
-    // ตัวช่วยพิมพ์เวลา (Smart Time Input) 
-    // ถ้าพิมพ์เลข 0800 จะแปลงเป็น 08:00 อัตโนมัติ (แต่ยอมให้ลบจนว่างเปล่าได้)
     document.querySelectorAll('.time-input').forEach(inp => {
         inp.addEventListener('input', function(e) {
             let v = this.value.replace(/[^0-9]/g, '');
@@ -27,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         inp.addEventListener('blur', function() {
             let v = this.value.replace(/[^0-9]/g, '');
-            if(v.length === 0) return; // 🌟 อนุญาตให้เว้นว่างได้
+            if(v.length === 0) return; 
             if(v.length === 3) v = '0' + v; 
             if(v.length === 4) {
                 this.value = v.substring(0, 2) + ':' + v.substring(2, 4);
@@ -58,7 +56,6 @@ async function loadPatientData() {
             document.getElementById('printPatientNameHn1').innerText = hTxt;
             document.getElementById('printPatientNameHn2').innerText = hTxt;
 
-            // 🌟 หากมีข้อมูลมื้ออาหารจาก LINE ยิงเข้ามาใน Patient DB สามารถจับยัดตรงนี้ได้เลย
             if(data.data.patient.Meal_Break) document.getElementById('mealBreak').value = data.data.patient.Meal_Break;
             if(data.data.patient.Meal_Lunch) document.getElementById('mealLunch').value = data.data.patient.Meal_Lunch;
             if(data.data.patient.Meal_Dinner) document.getElementById('mealDinner').value = data.data.patient.Meal_Dinner;
@@ -111,7 +108,7 @@ function renderTimeline(meds, logs) {
         let start = new Date(`${todayStr}T${timeStr}:00`).getTime() + (onset*60000);
         let end = start + (dur*3600000);
         let mid = new Date(`${todayStr}T23:59:59`).getTime();
-        let subId = m.Drug_ID;
+        let subId = m.Drug_ID; 
 
         let commonData = {
             id: m.Drug_ID, Trade_Name: name, Dose: m.Dose, onset: onset, Time_Take: timeStr, isOriginal: true 
@@ -136,15 +133,16 @@ function renderTimeline(meds, logs) {
     timeline = new vis.Timeline(c, timelineItems, timelineGroups, {
         start: new Date(`${todayStr}T00:00:00`), end: new Date(`${todayStr}T23:59:59`),
         stack: true, groupOrder: 'order', margin: { item: 10, axis: 5 },
-        zoomable: false, locale: 'th',
+        zoomable: false, 
+        locale: 'th',
+        showCurrentTime: false, // 🌟 ลบเส้นสีแดง (เวลาปัจจุบัน) ออกแล้ว
         editable: { add: false, updateTime: true, remove: true },
         onRemove: (item, cb) => { if(confirm("ลบข้อมูล?")) { fetch(API_URL, {method:'POST', body:JSON.stringify({action:'deleteLog', Log_ID:item.id})}); cb(item); } else cb(null); }
     });
 
-    updateMeals(); // 🌟 อัปเดตเส้นอาหารเมื่อวาดกราฟเสร็จ
+    updateMeals();
 }
 
-// 🌟 ระบบจัดการเส้นมื้ออาหารแบบ Dynamic
 function updateMeals() {
     const todayStr = new Date().toISOString().split('T')[0];
     const tb = document.getElementById('mealBreak').value.trim();
@@ -152,18 +150,14 @@ function updateMeals() {
     const td = document.getElementById('mealDinner').value.trim();
     const showMeals = document.getElementById('toggleMeals').checked;
 
-    // เคลียร์เส้นเก่าออกให้หมดก่อน
     try { timeline.removeCustomTime('mealBreakfast'); } catch(e){}
     try { timeline.removeCustomTime('mealLunch'); } catch(e){}
     try { timeline.removeCustomTime('mealDinner'); } catch(e){}
 
-    // ถ้ากดปิด Checkbox ก็ให้ออกเลย ไม่ต้องวาดเส้น
     if (!showMeals) return;
 
-    // ฟังก์ชันเช็คว่าเวลาที่กรอกมา ถูกต้องไหม (HH:MM)
     const isValidTime = (t) => /^([01]\d|2[0-3]):?([0-5]\d)$/.test(t);
 
-    // 🌟 ถ่าเวลาไม่ว่างเปล่า และ ถูกต้อง ถึงจะวาดเส้น (รองรับคนกิน 2 มื้อ)
     if (tb && isValidTime(tb)) {
         timeline.addCustomTime(new Date(`${todayStr}T${tb}:00`), 'mealBreakfast');
         timeline.setCustomTimeMarker('เช้า', 'mealBreakfast');
@@ -177,7 +171,6 @@ function updateMeals() {
         timeline.setCustomTimeMarker('เย็น', 'mealDinner');
     }
 
-    // ใส่สีให้เส้น
     document.querySelectorAll('.vis-custom-time').forEach(el => {
         if(el.innerHTML.includes('เช้า')) el.classList.add('meal-breakfast');
         if(el.innerHTML.includes('เที่ยง')) el.classList.add('meal-lunch');
@@ -249,6 +242,7 @@ function analyzeRegimen() {
     document.getElementById('aiRecommendationArea').classList.remove('d-none');
 }
 
+// 🌟 ระบบพิมพ์: แก้ไขให้กราฟบังคับขยายเต็มสัดส่วนก่อนถ่ายรูป
 function printSystem() {
     const today = new Date().toISOString().split('T')[0];
     timeline.setWindow(new Date(`${today}T00:00:00`), new Date(`${today}T23:59:59`), { animation: false });
@@ -256,16 +250,23 @@ function printSystem() {
     generateReport();
     document.getElementById('reportArea').classList.remove('d-none');
 
+    let viz = document.querySelector('#visualization');
+    let originalW = viz.style.width;
+    let originalH = viz.style.height;
+    
+    // 🌟 บังคับปรับความกว้าง/สูง ของกราฟให้ได้สัดส่วนกว้างพิเศษ เพื่อให้ชิดขอบกระดาษตอน Capture
+    viz.style.width = "1600px"; 
+    viz.style.height = "700px"; 
+    timeline.redraw(); // บังคับให้ vis.js วาดกราฟใหม่ให้เต็มพื้นที่ที่ขยายทันที
+
     setTimeout(() => {
-        let viz = document.querySelector('#visualization');
-        let originalW = viz.style.width;
-        viz.style.width = "1800px"; 
-        
         html2canvas(viz, { scale: 2, logging: false }).then(canvas => {
             viz.style.width = originalW;
+            viz.style.height = originalH;
+            timeline.redraw(); // คืนค่ากราฟกลับมาขนาดเดิมบนหน้าจอคอม
             document.getElementById('graph-snapshot').src = canvas.toDataURL("image/png");
         });
-    }, 500);
+    }, 800); // เผื่อเวลาให้กราฟขยายเสร็จ
 }
 
 function generateReport() {
@@ -352,6 +353,21 @@ function normalizeDateStr(dStr) {
     return dStr; 
 }
 
+function getTimestampForKPI(dateStr) {
+    if(!dateStr) return 0;
+    let testDate = new Date(dateStr);
+    if (!isNaN(testDate.getTime())) return testDate.getTime();
+    if(dateStr.includes('/')) {
+        let p = dateStr.split('/');
+        let d = parseInt(p[0], 10);
+        let m = parseInt(p[1], 10) - 1;
+        let y = parseInt(p[2], 10);
+        if(y > 2500) y -= 543; 
+        return new Date(y, m, d).getTime();
+    }
+    return 0;
+}
+
 async function fetchKPIReport() {
     let startInput = document.getElementById('kpiStart').value;
     let endInput = document.getElementById('kpiEnd').value;
@@ -431,22 +447,6 @@ function exportKPIExcel() {
     a.href = url;
     a.download = `KPI_Parkinson_${new Date().toISOString().slice(0,10)}.xls`;
     a.click();
-}
-
-// Helper ของ KPI
-function getTimestampForKPI(dateStr) {
-    if(!dateStr) return 0;
-    let testDate = new Date(dateStr);
-    if (!isNaN(testDate.getTime())) return testDate.getTime();
-    if(dateStr.includes('/')) {
-        let p = dateStr.split('/');
-        let d = parseInt(p[0], 10);
-        let m = parseInt(p[1], 10) - 1;
-        let y = parseInt(p[2], 10);
-        if(y > 2500) y -= 543; 
-        return new Date(y, m, d).getTime();
-    }
-    return 0;
 }
 
 function addSimulatedMed() { const d=document, i=d.getElementById('simDrug').value, o=d.getElementById('simDose').value, t=d.getElementById('simTime').value; if(!t)return; const inf=drugMaster.find(x=>x.id===i); const td=new Date().toISOString().split('T')[0]; const s=new Date(td+'T'+t+':00').getTime()+(inf.onset*60000); const e=s+(inf.duration*3600000); const mid=new Date(td+'T23:59:59').getTime(); if(!timelineGroups.get(i)) timelineGroups.add({id:i, content:inf.name, order:1}); let sub=i; let commonData = {id:i, Trade_Name:inf.name, Dose:o, onset:inf.onset, Time_Take:t, isOriginal:true}; if(e>mid) { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(mid), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); timelineItems.add({id:`M_W_${Math.random()}`, group:i, content:'(ต่อ)', start:new Date(td+'T00:00:00'), end:new Date(new Date(td+'T00:00:00').getTime()+(e-mid)), className:getDrugClass(inf.type), subgroup:sub, style:'opacity:0.7;border-style:dashed;', _drugData:{id:i, isWrapped:true}}); } else { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(e), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); } }
