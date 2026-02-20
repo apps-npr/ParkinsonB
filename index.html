@@ -17,7 +17,6 @@
         .vis-item.vis-range { border-radius: 4px; box-shadow: 1px 1px 2px rgba(0,0,0,0.2); font-size: 12px; }
         .vis-item .vis-item-content { padding: 0 4px; }
         
-        /* สีกลุ่มยาและอาการ */
         .med-ldopa-ir { background-color: #4CAF50 !important; color: white !important; border-color: #388E3C !important; }
         .med-ldopa-cr { background-color: #1B5E20 !important; color: white !important; border-color: #144018 !important; }
         .med-ldopa-fast { background-color: #8BC34A !important; color: black !important; border-color: #689F38 !important; }
@@ -25,10 +24,11 @@
         .med-agonist { background-color: #2196F3 !important; color: white !important; border-color: #1976D2 !important; }
         .med-mao { background-color: #9C27B0 !important; color: white !important; border-color: #7B1FA2 !important; }
         .med-antichoc { background-color: #795548 !important; color: white !important; border-color: #5D4037 !important; }
+        
         .log-off { background-color: #9E9E9E !important; color: white !important; border-color: #616161 !important; font-weight: bold; }
         .log-dyskinesia { background-color: #F44336 !important; color: white !important; border-color: #d32f2f !important; font-weight: bold; }
         
-        /* 🌟 CSS สาหรับเส้นมื้ออาหาร */
+        /* CSS เส้นมื้ออาหาร */
         .vis-custom-time.meal-breakfast { background-color: #FF9800; width: 2px; }
         .vis-custom-time.meal-lunch { background-color: #03A9F4; width: 2px; }
         .vis-custom-time.meal-dinner { background-color: #9C27B0; width: 2px; }
@@ -51,24 +51,13 @@
             .print-only { display: block !important; margin-bottom: 2px; }
             .container { width: 100% !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 
-            /* --- หน้า 1: กราฟรูปภาพ (ใหญ่ขึ้นตาม Master A) --- */
-            #page1-wrapper {
-                height: 135mm; width: 100%; position: relative;
-                page-break-after: always; overflow: hidden;
-                display: flex; flex-direction: column; align-items: center;
-            }
+            #page1-wrapper { height: 135mm; width: 100%; position: relative; page-break-after: always; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
             #viz-container { display: none !important; }
             
-            #graph-snapshot-container {
-                display: block !important; width: 100%; text-align: center; margin-top: 5px;
-            }
-            /* 🌟 บังคับรูปกราฟให้กางเกือบเต็มชิดขอบ */
-            #graph-snapshot {
-                width: 98%; height: auto; max-height: 125mm; object-fit: contain; border: 1px solid #000;
-            }
+            #graph-snapshot-container { display: block !important; width: 100%; text-align: left; margin-top: 5px; }
+            #graph-snapshot { width: 100%; height: auto; max-height: 125mm; object-fit: contain; object-position: left top; border: 1px solid #000; }
             .legend-row { display: none !important; }
 
-            /* --- หน้า 2: รายงาน (2 คอลัมน์) --- */
             #reportArea { display: block !important; margin-top: 0 !important; border: none !important; padding: 0 !important; width: 100%; position: relative; }
             .print-row { display: flex !important; flex-wrap: nowrap !important; justify-content: space-between; width: 100%; align-items: flex-start; }
             .print-col-left { width: 49%; padding-right: 8px; border-right: 1px solid #ccc; }
@@ -129,20 +118,25 @@
             </div>
             <div class="col-md-3">
                 <div class="meal-panel h-100" style="background-color: #fff3e0; border-color: #ffb74d;">
-                    <h6 class="text-warning text-darken-2">🍽️ เวลามื้ออาหารหลัก</h6>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="text-warning text-darken-2 m-0">🍽️ มื้ออาหาร</h6>
+                        <div class="form-check form-switch m-0">
+                            <input class="form-check-input" type="checkbox" id="toggleMeals" checked onchange="updateMeals()">
+                        </div>
+                    </div>
                     <div class="input-group input-group-sm mb-2 mt-3">
                         <span class="input-group-text bg-light">เช้า</span>
-                        <input type="text" id="mealBreak" class="form-control time-input" placeholder="0700" value="07:00">
+                        <input type="text" id="mealBreak" class="form-control time-input" placeholder="เว้นว่างได้" value="07:00">
                     </div>
                     <div class="input-group input-group-sm mb-2">
                         <span class="input-group-text bg-light">เที่ยง</span>
-                        <input type="text" id="mealLunch" class="form-control time-input" placeholder="1200" value="12:00">
+                        <input type="text" id="mealLunch" class="form-control time-input" placeholder="เว้นว่างได้" value="12:00">
                     </div>
                     <div class="input-group input-group-sm mb-2">
                         <span class="input-group-text bg-light">เย็น</span>
-                        <input type="text" id="mealDinner" class="form-control time-input" placeholder="1700" value="17:00">
+                        <input type="text" id="mealDinner" class="form-control time-input" placeholder="เว้นว่างได้" value="17:00">
                     </div>
-                    <button class="btn btn-warning btn-sm w-100 text-dark" onclick="updateMeals()">อัปเดตมื้ออาหารลงกราฟ</button>
+                    <button class="btn btn-warning btn-sm w-100 text-dark" onclick="updateMeals()">อัปเดตเส้นอาหาร</button>
                 </div>
             </div>
         </div>
