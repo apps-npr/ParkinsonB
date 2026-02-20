@@ -88,7 +88,9 @@ function renderTimeline(meds, logs) {
         let start = new Date(`${today}T${timeStr}:00`).getTime() + (onset*60000);
         let end = start + (dur*3600000);
         let mid = new Date(`${today}T23:59:59`).getTime();
-        let subId = m.Drug_ID + "_" + timeStr;
+        
+        // 🌟 แก้ไข: บังคับใช้ subgroup เป็นชื่อยาตรงๆ เพื่อให้ยาทุกตัวที่ชื่อเดียวกันอยู่บรรทัดเดียวกันเสมอ
+        let subId = m.Drug_ID;
 
         let commonData = {
             id: m.Drug_ID, 
@@ -165,6 +167,7 @@ function saveADR() {
     }
 }
 
+// 🌟 ระบบวิเคราะห์ AI แบบละเอียด
 function analyzeRegimen() {
     let items = timelineItems.get();
     let hasOff = items.some(i => i.group === 'symptoms' && i.content === 'OFF-Time');
@@ -199,6 +202,7 @@ function analyzeRegimen() {
     document.getElementById('aiRecommendationArea').classList.remove('d-none');
 }
 
+// 🌟 ระบบพิมพ์: สร้าง Preview -> ขยายกราฟชิดขอบ -> ถ่ายรูป
 function printSystem() {
     const today = new Date().toISOString().split('T')[0];
     timeline.setWindow(new Date(`${today}T00:00:00`), new Date(`${today}T23:59:59`), { animation: false });
@@ -209,7 +213,8 @@ function printSystem() {
     setTimeout(() => {
         let viz = document.querySelector('#visualization');
         let originalW = viz.style.width;
-        viz.style.width = "1500px"; 
+        // 🌟 บังคับขยายกราฟให้กว้างๆ เพื่อชดเชยที่ว่างด้านขวาตอนพิมพ์ A5
+        viz.style.width = "1800px"; 
         
         html2canvas(viz, { scale: 2, logging: false }).then(canvas => {
             viz.style.width = originalW;
@@ -290,39 +295,90 @@ function generateReport() {
     document.getElementById('reportContent').innerHTML = html;
 }
 
+// 🌟 แก้ไขระบบอ่านวันที่ให้ยืดหยุ่น สำหรับคำนวณ KPI
+function parseDateForKPI(dateStr) {
+    if(!dateStr) return 0;
+    if(dateStr.includes('-')) return new Date(dateStr).getTime();
+    let parts = dateStr.split('/');
+    if(parts.length === 3) {
+        let d = parseInt(parts[0], 10);
+        let m = parseInt(parts[1], 10) - 1;
+        let y = parseInt(parts[2], 10);
+        if(y > 2500) y -= 543; // แปลง พ.ศ. เป็น ค.ศ.
+        return new Date(y, m, d).getTime();
+    }
+    return new Date(dateStr).getTime();
+}
+
+// 🌟 ระบบคำนวณ KPI (แบบนับเปอร์เซ็นต์ผู้ป่วยจริง)
 async function fetchKPIReport() {
-    let start = document.getElementById('kpiStart').value;
-    let end = document.getElementById('kpiEnd').value;
-    if(!start || !end) return alert("กรุณาเลือกวันที่");
+    let startInput = document.getElementById('kpiStart').value;
+    let endInput = document.getElementById('kpiEnd').value;
+    if(!startInput || !endInput) return alert("กรุณาเลือกวันที่");
+
+    let startMs = new Date(startInput).getTime();
+    let endMs = new Date(endInput).getTime() + 86399000; // ตลอดทั้งวัน
 
     try {
         const res = await fetch(`${API_URL}?action=getKPIReport`);
         const data = await res.json();
         
-        let targetLogs = data.logs.filter(l => l.Date >= start && l.Date <= end);
+        // กรอง Logs ตามช่วงเวลา
+        let targetLogs = data.logs.filter(l => {
+            let t = parseDateForKPI(l.Date);
+            return t >= startMs && t <= endMs;
+        });
+        
+        // หากลุ่มผู้ป่วยที่ไม่ซ้ำ
         let uniquePatients = new Set(targetLogs.map(l => l.PD_No));
         let totalPatients = uniquePatients.size;
         
-        let wearingOffPatients = new Set(targetLogs.filter(l => l.Event_Type === 'OFF-Time').map(l => l.PD_No)).size;
-        let dyskinesiaPatients = new Set(targetLogs.filter(l => l.Event_Type === 'Dyskinesia').map(l => l.PD_No)).size;
+        let cOff = 0, cDys = 0, cDelOn = 0, cMornAki = 0, cNonComp = 0, cAdr = 0;
+
+        // วนเช็คอาการรายคน เพื่อไม่ให้นับเบิ้ล (ผู้ป่วย 1 คนอาจมีหลาย Logs แต่จะนับเป็น 1 เคส)
+        uniquePatients.forEach(pd => {
+            let pLogs = targetLogs.filter(l => l.PD_No === pd);
+            
+            let hasOff = pLogs.some(l => l.Event_Type === 'OFF-Time' || (l.Detail_Note && l.Detail_Note.includes('Wearing-off')));
+            let hasDys = pLogs.some(l => l.Event_Type === 'Dyskinesia' || (l.Detail_Note && l.Detail_Note.includes('Dyskinesia')));
+            let hasDelOn = pLogs.some(l => l.Detail_Note && l.Detail_Note.includes('Delayed ON'));
+            let hasMorn = pLogs.some(l => l.Detail_Note && l.Detail_Note.includes('Morning Akinesia'));
+            let hasComp = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('ลืมกินยา') || l.Detail_Note.includes('ปรับเพิ่ม') || l.Detail_Note.includes('ปรับลด') || l.Detail_Note.includes('ผิดขนาด')));
+            let hasAdr = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('หน้ามืด') || l.Detail_Note.includes('หกล้ม') || l.Detail_Note.includes('คลื่นไส้') || l.Detail_Note.includes('ภาพหลอน') || l.Detail_Note.includes('นอนไม่หลับ') || l.Detail_Note.includes('ท้องผูก') || l.Detail_Note.includes('ง่วงซึม') || l.Detail_Note.includes('ปัสสาวะ') || l.Detail_Note.includes('น้ำลายไหล') || l.Detail_Note.includes('กลืนลำบาก') || l.Detail_Note.includes('วิงเวียน')));
+
+            if(hasOff) cOff++;
+            if(hasDys) cDys++;
+            if(hasDelOn) cDelOn++;
+            if(hasMorn) cMornAki++;
+            if(hasComp) cNonComp++;
+            if(hasAdr) cAdr++;
+        });
         
-        let offPct = totalPatients ? ((wearingOffPatients/totalPatients)*100).toFixed(1) : 0;
-        let dysPct = totalPatients ? ((dyskinesiaPatients/totalPatients)*100).toFixed(1) : 0;
+        let getPct = (count) => totalPatients ? ((count/totalPatients)*100).toFixed(1) : 0;
 
         let resultTxt = `📊 สรุปตัวชี้วัดคลินิกพาร์กินสัน (KPI Report)\n`;
-        resultTxt += `📅 ช่วงเวลา: ${start} ถึง ${end}\n`;
+        resultTxt += `📅 ช่วงเวลา: ${startInput} ถึง ${endInput}\n`;
         resultTxt += `----------------------------------------\n`;
-        resultTxt += `👥 จำนวนผู้ป่วยที่มารับบริการ: ${totalPatients} ราย\n`;
-        resultTxt += `📉 พบภาวะยาหมดฤทธิ์ (Wearing-off): ${wearingOffPatients} ราย (${offPct}%)\n`;
-        resultTxt += `📈 พบภาวะยุกยิก (Dyskinesia): ${dyskinesiaPatients} ราย (${dysPct}%)\n`;
+        resultTxt += `👥 ผู้ป่วยรับบริการทั้งหมด: ${totalPatients} ราย\n\n`;
+        resultTxt += `[1] Motor Complications:\n`;
+        resultTxt += `  - พบ Wearing-off: ${cOff} ราย (${getPct(cOff)}%)\n`;
+        resultTxt += `  - พบ Dyskinesia: ${cDys} ราย (${getPct(cDys)}%)\n`;
+        resultTxt += `  - พบ Delayed ON: ${cDelOn} ราย (${getPct(cDelOn)}%)\n`;
+        resultTxt += `  - พบ Morning Akinesia: ${cMornAki} ราย (${getPct(cMornAki)}%)\n\n`;
+        resultTxt += `[2] Drug Related Problems (DRPs):\n`;
+        resultTxt += `  - พบ Non-Compliance (ปัญหาให้ความร่วมมือ): ${cNonComp} ราย (${getPct(cNonComp)}%)\n`;
+        resultTxt += `  - พบ ADR/Side effects (ผลข้างเคียง): ${cAdr} ราย (${getPct(cAdr)}%)\n`;
         resultTxt += `----------------------------------------\n`;
-        resultTxt += `✅ เป้าหมายโรงพยาบาล: อัตราการเกิดภาวะแทรกซ้อนที่ได้รับการแก้ไข > 80%`;
+        resultTxt += `✅ เป้าหมายโรงพยาบาล: อัตราการเกิดภาวะแทรกซ้อนที่ได้รับการประเมิน/แก้ไข > 80%`;
 
         document.getElementById('kpiResult').value = resultTxt;
     } catch(e) { alert("ดึงข้อมูลล้มเหลว: " + e); }
 }
 
-// 🌟 แก้ไข: บันทึกอาการลง Database (API Call)
+function addSimulatedMed() { const d=document, i=d.getElementById('simDrug').value, o=d.getElementById('simDose').value, t=d.getElementById('simTime').value; if(!t)return; const inf=drugMaster.find(x=>x.id===i); const td=new Date().toISOString().split('T')[0]; const s=new Date(td+'T'+t+':00').getTime()+(inf.onset*60000); const e=s+(inf.duration*3600000); const mid=new Date(td+'T23:59:59').getTime(); if(!timelineGroups.get(i)) timelineGroups.add({id:i, content:inf.name, order:1}); 
+let sub=i; // 🌟 บังคับใช้ Drug ID เป็น Subgroup เพื่อให้อยู่บรรทัดเดียวกันเสมอ
+let commonData = {id:i, Trade_Name:inf.name, Dose:o, onset:inf.onset, Time_Take:t, isOriginal:true}; if(e>mid) { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(mid), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); timelineItems.add({id:`M_W_${Math.random()}`, group:i, content:'(ต่อ)', start:new Date(td+'T00:00:00'), end:new Date(new Date(td+'T00:00:00').getTime()+(e-mid)), className:getDrugClass(inf.type), subgroup:sub, style:'opacity:0.7;border-style:dashed;', _drugData:{id:i, isWrapped:true}}); } else { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(e), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); } }
+
 function addManualSymptom() { 
     let type = document.getElementById('symType').value;
     let startStr = document.getElementById('symStart').value;
@@ -340,7 +396,6 @@ function addManualSymptom() {
         Detail_Note: "Manual Input" 
     };
 
-    // ส่งเข้า API ไปบันทึกใน Google Sheets
     fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(res => res.json())
       .then(data => {
@@ -364,41 +419,5 @@ function addManualSymptom() {
       .catch(err => alert("เกิดข้อผิดพลาดในการบันทึกอาการลงฐานข้อมูล"));
 }
 
-function addSimulatedMed() { 
-    const d=document, i=d.getElementById('simDrug').value, o=d.getElementById('simDose').value, t=d.getElementById('simTime').value; 
-    if(!t)return; 
-    const inf=drugMaster.find(x=>x.id===i); 
-    const td=new Date().toISOString().split('T')[0]; 
-    const s=new Date(td+'T'+t+':00').getTime()+(inf.onset*60000); 
-    const e=s+(inf.duration*3600000); 
-    const mid=new Date(td+'T23:59:59').getTime(); 
-    
-    if(!timelineGroups.get(i)) timelineGroups.add({id:i, content:inf.name, order:1}); 
-    let sub=i+'_'+t; 
-    let commonData = {id:i, Trade_Name:inf.name, Dose:o, onset:inf.onset, Time_Take:t, isOriginal:true}; 
-    
-    if(e>mid) { 
-        timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(mid), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); 
-        timelineItems.add({id:`M_W_${Math.random()}`, group:i, content:'(ต่อ)', start:new Date(td+'T00:00:00'), end:new Date(new Date(td+'T00:00:00').getTime()+(e-mid)), className:getDrugClass(inf.type), subgroup:sub, style:'opacity:0.7;border-style:dashed;', _drugData:{id:i, isWrapped:true}}); 
-    } else { 
-        timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(e), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); 
-    } 
-}
-
-function archiveOldLogs() { 
-    if(confirm("ล้างกราฟ?")) { 
-        fetch(API_URL, {method:'POST', body:JSON.stringify({action:'archiveLogs', PD_No:currentPatientId})}).then(()=>loadPatientData()); 
-    } 
-}
-
-function saveMedsToDB() { 
-    if(confirm("บันทึกยา?")) { 
-        let m=[]; 
-        timelineItems.get().forEach(i=>{ 
-            if(i.group!=='symptoms' && i._drugData?.isOriginal) {
-                m.push({Drug_ID:i._drugData.id, Dose:i._drugData.Dose, Time_Take:i._drugData.Time_Take||"08:00"}); 
-            }
-        }); 
-        fetch(API_URL, {method:'POST', body:JSON.stringify({action:'updatePatientMeds', PD_No:currentPatientId, meds:m})}).then(()=>alert("บันทึกแล้ว")); 
-    } 
-}
+function archiveOldLogs() { if(confirm("ล้างกราฟ?")) { fetch(API_URL, {method:'POST', body:JSON.stringify({action:'archiveLogs', PD_No:currentPatientId})}).then(()=>loadPatientData()); } }
+function saveMedsToDB() { if(confirm("บันทึกยา?")) { let m=[]; timelineItems.get().forEach(i=>{ if(i.group!=='symptoms' && i._drugData?.isOriginal) m.push({Drug_ID:i._drugData.id, Dose:i._drugData.Dose, Time_Take:i._drugData.Time_Take||"08:00"}); }); fetch(API_URL, {method:'POST', body:JSON.stringify({action:'updatePatientMeds', PD_No:currentPatientId, meds:m})}).then(()=>alert("บันทึกแล้ว")); } }
