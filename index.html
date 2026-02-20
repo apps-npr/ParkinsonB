@@ -17,6 +17,7 @@
         .vis-item.vis-range { border-radius: 4px; box-shadow: 1px 1px 2px rgba(0,0,0,0.2); font-size: 12px; }
         .vis-item .vis-item-content { padding: 0 4px; }
         
+        /* สีกลุ่มยาและอาการ */
         .med-ldopa-ir { background-color: #4CAF50 !important; color: white !important; border-color: #388E3C !important; }
         .med-ldopa-cr { background-color: #1B5E20 !important; color: white !important; border-color: #144018 !important; }
         .med-ldopa-fast { background-color: #8BC34A !important; color: black !important; border-color: #689F38 !important; }
@@ -24,11 +25,19 @@
         .med-agonist { background-color: #2196F3 !important; color: white !important; border-color: #1976D2 !important; }
         .med-mao { background-color: #9C27B0 !important; color: white !important; border-color: #7B1FA2 !important; }
         .med-antichoc { background-color: #795548 !important; color: white !important; border-color: #5D4037 !important; }
-        
         .log-off { background-color: #9E9E9E !important; color: white !important; border-color: #616161 !important; font-weight: bold; }
         .log-dyskinesia { background-color: #F44336 !important; color: white !important; border-color: #d32f2f !important; font-weight: bold; }
         
-        .simulation-panel, .symptom-panel { background-color: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        /* 🌟 CSS สาหรับเส้นมื้ออาหาร */
+        .vis-custom-time.meal-breakfast { background-color: #FF9800; width: 2px; }
+        .vis-custom-time.meal-lunch { background-color: #03A9F4; width: 2px; }
+        .vis-custom-time.meal-dinner { background-color: #9C27B0; width: 2px; }
+        .vis-custom-time > div { font-weight: bold; padding: 2px 4px; border-radius: 4px; color: white; font-size: 10px; }
+        .vis-custom-time.meal-breakfast > div { background-color: #FF9800; }
+        .vis-custom-time.meal-lunch > div { background-color: #03A9F4; }
+        .vis-custom-time.meal-dinner > div { background-color: #9C27B0; }
+
+        .simulation-panel, .symptom-panel, .meal-panel { background-color: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
         .legend-box { display: inline-block; width: 12px; height: 12px; margin-right: 3px; vertical-align: middle; border-radius: 2px;}
         .print-only { display: none; }
 
@@ -38,11 +47,11 @@
         @media print {
             @page { size: A5 landscape; margin: 5mm; } 
             body { background-color: #fff; font-size: 9pt; display: block; padding: 0 !important; -webkit-print-color-adjust: exact; }
-            .no-print, .simulation-panel, .card, .alert, .btn, .modal { display: none !important; }
+            .no-print, .simulation-panel, .symptom-panel, .meal-panel, .card, .alert, .btn, .modal { display: none !important; }
             .print-only { display: block !important; margin-bottom: 2px; }
             .container { width: 100% !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 
-            /* --- หน้า 1: กราฟรูปภาพ --- */
+            /* --- หน้า 1: กราฟรูปภาพ (ใหญ่ขึ้นตาม Master A) --- */
             #page1-wrapper {
                 height: 135mm; width: 100%; position: relative;
                 page-break-after: always; overflow: hidden;
@@ -51,10 +60,11 @@
             #viz-container { display: none !important; }
             
             #graph-snapshot-container {
-                display: block !important; width: 100%; text-align: left; margin-top: 5px;
+                display: block !important; width: 100%; text-align: center; margin-top: 5px;
             }
+            /* 🌟 บังคับรูปกราฟให้กางเกือบเต็มชิดขอบ */
             #graph-snapshot {
-                width: 100%; height: auto; max-height: 125mm; object-fit: contain; object-position: left top; border: 1px solid #000;
+                width: 98%; height: auto; max-height: 125mm; object-fit: contain; border: 1px solid #000;
             }
             .legend-row { display: none !important; }
 
@@ -68,10 +78,7 @@
             li { margin-bottom: 1px !important; }
             .report-header { font-size: 10pt; font-weight: bold; margin-top: 5px; margin-bottom: 3px; text-decoration: underline; color: #000 !important; }
 
-            .signature-box {
-                margin-top: 40px; margin-right: 20px; width: 200px; text-align: center;
-                border-top: 1px solid #000; padding-top: 5px; float: right;
-            }
+            .signature-box { margin-top: 40px; margin-right: 20px; width: 200px; text-align: center; border-top: 1px solid #000; padding-top: 5px; float: right; }
         }
     </style>
 </head>
@@ -98,29 +105,48 @@
 
     <div id="simulationPanel" class="d-none no-print">
         <div class="row">
-            <div class="col-md-7">
+            <div class="col-md-5">
                 <div class="simulation-panel h-100">
                     <h6 class="text-primary">⚙️ จัดการรายการยา (Medications)</h6>
                     <div class="row align-items-end mt-3">
-                        <div class="col-md-6"><select id="simDrug" class="form-select"></select></div>
-                        <div class="col-md-3"><input type="text" id="simDose" class="form-control" placeholder="Dose"></div>
-                        <div class="col-md-3"><input type="text" id="simTime" class="form-control time-input" placeholder="เวลา (0800)" maxlength="5"></div>
+                        <div class="col-md-12 mb-2"><select id="simDrug" class="form-select"></select></div>
+                        <div class="col-md-6"><input type="text" id="simDose" class="form-control" placeholder="Dose (เช่น 1 tab)"></div>
+                        <div class="col-md-6"><input type="text" id="simTime" class="form-control time-input" placeholder="เวลา (0800)" maxlength="5"></div>
                     </div>
                     <button class="btn btn-success w-100 mt-2" onclick="addSimulatedMed()">➕ เติมยาลงกราฟ</button>
                 </div>
             </div>
-            <div class="col-md-5">
+            <div class="col-md-4">
                 <div class="symptom-panel h-100" style="background-color: #fce4ec; border-color: #f48fb1;">
-                    <h6 class="text-danger">🚨 บันทึกอาการ</h6>
+                    <h6 class="text-danger">🚨 บันทึกอาการ (Logs)</h6>
                     <select id="symType" class="form-select mt-3 mb-2"><option value="OFF-Time">OFF-Time</option><option value="Dyskinesia">Dyskinesia</option></select>
                     <div class="row align-items-end">
                         <div class="col-md-5"><label class="small text-muted mb-1">เริ่ม</label><input type="text" id="symStart" class="form-control time-input" placeholder="0000" maxlength="5"></div>
                         <div class="col-md-5"><label class="small text-muted mb-1">สิ้นสุด</label><input type="text" id="symEnd" class="form-control time-input" placeholder="0000" maxlength="5"></div>
-                        <div class="col-md-2"><button class="btn btn-danger w-100" style="margin-top: 24px;" onclick="addManualSymptom()">➕</button></div>
+                        <div class="col-md-2"><button class="btn btn-danger w-100" style="margin-top: 24px; padding:6px 0;" onclick="addManualSymptom()">➕</button></div>
                     </div>
                 </div>
             </div>
+            <div class="col-md-3">
+                <div class="meal-panel h-100" style="background-color: #fff3e0; border-color: #ffb74d;">
+                    <h6 class="text-warning text-darken-2">🍽️ เวลามื้ออาหารหลัก</h6>
+                    <div class="input-group input-group-sm mb-2 mt-3">
+                        <span class="input-group-text bg-light">เช้า</span>
+                        <input type="text" id="mealBreak" class="form-control time-input" placeholder="0700" value="07:00">
+                    </div>
+                    <div class="input-group input-group-sm mb-2">
+                        <span class="input-group-text bg-light">เที่ยง</span>
+                        <input type="text" id="mealLunch" class="form-control time-input" placeholder="1200" value="12:00">
+                    </div>
+                    <div class="input-group input-group-sm mb-2">
+                        <span class="input-group-text bg-light">เย็น</span>
+                        <input type="text" id="mealDinner" class="form-control time-input" placeholder="1700" value="17:00">
+                    </div>
+                    <button class="btn btn-warning btn-sm w-100 text-dark" onclick="updateMeals()">อัปเดตมื้ออาหารลงกราฟ</button>
+                </div>
+            </div>
         </div>
+
         <div class="d-flex justify-content-between align-items-center mt-2 mb-2">
             <div>
                 <button class="btn btn-outline-primary btn-sm" onclick="analyzeRegimen()">💡 วิเคราะห์ AI</button>
@@ -132,7 +158,7 @@
 
     <div id="aiRecommendationArea" class="ai-panel d-none no-print">
         <h5 id="aiTitle" class="text-success mb-3"></h5>
-        <div class="alert alert-success"><strong>🌟 คำแนะนำ:</strong><p id="aiBest" class="mb-0 mt-1"></p></div>
+        <div class="alert alert-success"><strong>🌟 คาแนะนา:</strong><p id="aiBest" class="mb-0 mt-1"></p></div>
         <div class="alert alert-secondary"><strong>🔄 ตัวเลือกอื่น:</strong><ul id="aiOptions" class="mb-0 mt-1"></ul></div>
     </div>
 
@@ -143,7 +169,9 @@
         </div>
         <div id="viz-container"><div id="visualization"></div></div>
         <div id="graph-snapshot-container" class="print-only" style="display:none;"><img id="graph-snapshot" src="" alt="Graph Snapshot"></div>
-        <div class="legend-row small text-center mt-1 no-print"><span class="legend-box" style="background-color: #4CAF50;"></span>IR <span class="legend-box" style="background-color: #1B5E20;"></span>CR <span class="legend-box" style="background-color: #8BC34A;"></span>Disp <span class="legend-box" style="background-color: #FF9800;"></span>COMT <span class="legend-box" style="background-color: #2196F3;"></span>Agonist <span class="legend-box" style="background-color: #9C27B0;"></span>MAO-B <span class="legend-box" style="background-color: #9E9E9E;"></span><b>OFF</b> <span class="legend-box" style="background-color: #F44336;"></span><b>Dys</b></div>
+        <div class="legend-row small text-center mt-1 no-print">
+            <span class="legend-box" style="background-color: #4CAF50;"></span>IR <span class="legend-box" style="background-color: #1B5E20;"></span>CR <span class="legend-box" style="background-color: #8BC34A;"></span>Disp <span class="legend-box" style="background-color: #FF9800;"></span>COMT <span class="legend-box" style="background-color: #2196F3;"></span>Agonist <span class="legend-box" style="background-color: #9C27B0;"></span>MAO-B <span class="legend-box" style="background-color: #9E9E9E;"></span><b>OFF</b> <span class="legend-box" style="background-color: #F44336;"></span><b>Dys</b>
+        </div>
     </div>
 
     <div id="reportArea" class="mt-4 p-4 bg-white border rounded shadow-sm d-none">
@@ -166,37 +194,37 @@
       <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
         
         <h6 class="text-primary mt-2">1. ปัญหาด้านวิธีการบริหารยา และอาหาร</h6>
-        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ทานยาก่อนอาหารน้อยกว่า 30 นาที หรือหลังอาหารไม่ถึง 1 ชม." data-suggest="แนะนำรับประทานยาก่อนอาหารอย่างน้อย 30 นาที หรือหลังอาหาร 1-2 ชั่วโมง" id="dfi1"><label class="form-check-label" for="dfi1">ทานยาก่อนอาหารน้อยกว่า 30 นาที หรือหลังอาหารไม่ถึง 1 ชม.</label></div>
-        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="รับประทานยาพร้อมอาหารโปรตีนสูง" data-suggest="หลีกเลี่ยงการรับประทานยาพร้อมอาหารโปรตีนสูง เนื่องจากแย่งยาดูดซึมที่ลำไส้" id="dfi2"><label class="form-check-label" for="dfi2">รับประทานยาพร้อมอาหารโปรตีนสูง (เช่น นม เนื้อสัตว์)</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ทานยาก่อนอาหารน้อยกว่า 30 นาที หรือหลังอาหารไม่ถึง 1 ชม." data-suggest="แนะนารับประทานยาก่อนอาหารอย่างน้อย 30 นาที หรือหลังอาหาร 1-2 ชั่วโมง" id="dfi1"><label class="form-check-label" for="dfi1">ทานยาก่อนอาหารน้อยกว่า 30 นาที หรือหลังอาหารไม่ถึง 1 ชม.</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="รับประทานยาพร้อมอาหารโปรตีนสูง" data-suggest="หลีกเลี่ยงการรับประทานยาพร้อมอาหารโปรตีนสูง เนื่องจากแย่งยาดูดซึมที่ลาไส้" id="dfi2"><label class="form-check-label" for="dfi2">รับประทานยาพร้อมอาหารโปรตีนสูง (เช่น นม เนื้อสัตว์)</label></div>
         <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="บริหารยาทางสายยาง (NG Tube)" data-suggest="ตรวจสอบข้อห้ามในการบดยา (เช่น ห้ามบด Madopar HBS, Requip PD 24h) และพิจารณาปรับรูปแบบยาเป็น Dispersible" id="admin1"><label class="form-check-label fw-bold text-danger" for="admin1">ผู้ป่วยบริหารอาหารและยาทางสายยาง (NG Tube)</label></div>
         
         <h6 class="text-primary mt-4">2. ความร่วมมือในการใช้ยา (Non-Compliance)</h6>
-        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ลืมกินยาบ่อย (ขาดผู้ดูแลกำกับ)" data-suggest="ผู้ป่วยลืมทานยาบ่อย/ขาดผู้ดูแลกำกับ เสนอแพทย์ปรับตารางยาให้ง่ายขึ้น" id="comp1"><label class="form-check-label" for="comp1">ลืมกินยาบ่อย (ขาดผู้ดูแลกำกับ)</label></div>
-        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="รับประทานยาผิดขนาด/ไม่อ่านฉลาก" data-suggest="เภสัชกรอธิบายวิธีใช้ยาซ้ำและเน้นย้ำให้อ่านฉลากทุกครั้ง" id="comp6"><label class="form-check-label" for="comp6">รับประทานยาผิดขนาด/ไม่อ่านฉลากยา</label></div>
-        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ปรับเพิ่มขนาดยาเอง (เพื่อหวังผลการรักษา)" data-suggest="ผู้ป่วยปรับเพิ่มยาเอง เสี่ยงต่อ Dyskinesia เภสัชกรเน้นย้ำอันตราย" id="comp2"><label class="form-check-label text-danger" for="comp2">ปรับเพิ่มขนาดยาเอง (หวังผลการรักษา)</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ลืมกินยาบ่อย (ขาดผู้ดูแลกากับ)" data-suggest="ผู้ป่วยลืมทานยาบ่อย/ขาดผู้ดูแลกากับ เสนอแพทย์ปรับตารางยาให้ง่ายขึ้น" id="comp1"><label class="form-check-label" for="comp1">ลืมกินยาบ่อย (ขาดผู้ดูแลกากับ)</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="รับประทานยาผิดขนาด/ไม่อ่านฉลาก" data-suggest="เภสัชกรอธิบายวิธีใช้ยาซ้าและเน้นย้าให้อ่านฉลากทุกครั้ง" id="comp6"><label class="form-check-label" for="comp6">รับประทานยาผิดขนาด/ไม่อ่านฉลากยา</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ปรับเพิ่มขนาดยาเอง (เพื่อหวังผลการรักษา)" data-suggest="ผู้ป่วยปรับเพิ่มยาเอง เสี่ยงต่อ Dyskinesia เภสัชกรเน้นย้าอันตราย" id="comp2"><label class="form-check-label text-danger" for="comp2">ปรับเพิ่มขนาดยาเอง (หวังผลการรักษา)</label></div>
         <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ปรับลดขนาดยาเอง (ทนผลข้างเคียงไม่ได้)" data-suggest="ผู้ป่วยปรับลดยาเองเนื่องจากอาการข้างเคียง บันทึกเพื่อให้แพทย์พิจารณาปรับขนาดยา" id="comp3"><label class="form-check-label text-danger" for="comp3">ปรับลดขนาดยาเอง (ทนผลข้างเคียงไม่ได้)</label></div>
         
         <h6 class="text-danger mt-4">3. ลักษณะอาการ OFF-Time</h6>
         <div class="row">
         <div class="col-md-6"><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: อาการสั่นขณะพัก (Resting tremor)" id="off1"><label class="form-check-label" for="off1">สั่นขณะพัก (Tremor)</label></div><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: อาการแข็งเกร็ง (Rigidity)" id="off2"><label class="form-check-label" for="off2">แข็งเกร็ง (Rigidity)</label></div></div>
-        <div class="col-md-6"><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: เคลื่อนไหวช้า (Bradykinesia)" id="off3"><label class="form-check-label" for="off3">เคลื่อนไหวช้า (Bradykinesia)</label></div><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: ทรงตัวลำบาก (Postural instability)" data-suggest="ผู้ป่วยมีปัญหาทรงตัวลำบากในช่วงยาหมดฤทธิ์ เสี่ยงต่อการหกล้มสูง ควรประเมินการปรับยาเพื่อลดรอยต่อมื้อยา" id="off4"><label class="form-check-label fw-bold text-danger" for="off4">ทรงตัวลำบาก / เดินเซ (Postural instability)</label></div></div>
+        <div class="col-md-6"><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: เคลื่อนไหวช้า (Bradykinesia)" id="off3"><label class="form-check-label" for="off3">เคลื่อนไหวช้า (Bradykinesia)</label></div><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: ทรงตัวลาบาก (Postural instability)" data-suggest="ผู้ป่วยมีปัญหาทรงตัวลาบากในช่วงยาหมดฤทธิ์ เสี่ยงต่อการหกล้มสูง ควรประเมินการปรับยาเพื่อลดรอยต่อมื้อยา" id="off4"><label class="form-check-label fw-bold text-danger" for="off4">ทรงตัวลาบาก / เดินเซ (Postural instability)</label></div></div>
         </div>
         
         <h6 class="text-danger mt-4">4. อาการข้างเคียง (ADR & Safety)</h6>
         <div class="row">
         <div class="col-md-6">
-            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="หน้ามืด/วูบเวลาเปลี่ยนท่า (Orthostatic Hypotension)" data-suggest="ระวังภาวะความดันตกขณะเปลี่ยนท่า แนะนำให้ลุกช้าๆ หรือแพทย์พิจารณาปรับยา" id="adr1"><label class="form-check-label fw-bold text-danger" for="adr1">หน้ามืด/วูบเวลาเปลี่ยนท่า</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="หน้ามืด/วูบเวลาเปลี่ยนท่า (Orthostatic Hypotension)" data-suggest="ระวังภาวะความดันตกขณะเปลี่ยนท่า แนะนาให้ลุกช้าๆ หรือแพทย์พิจารณาปรับยา" id="adr1"><label class="form-check-label fw-bold text-danger" for="adr1">หน้ามืด/วูบเวลาเปลี่ยนท่า</label></div>
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="วิงเวียนศรีษะ (Dizziness)" data-suggest="พบอาการวิงเวียนศรีษะ: ระวังความเสี่ยงในการหกล้ม ควรประเมินความดันโลหิตตกขณะเปลี่ยนท่าร่วมด้วย" id="adr11"><label class="form-check-label" for="adr11">วิงเวียนศรีษะ (Dizziness)</label></div>
-            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="มีประวัติหกล้ม (Falls)" data-suggest="ผู้ป่วยมีประวัติหกล้ม อาจเกิดจากภาวะโรคดำเนินไป, OFF-time, หรือผลข้างเคียงจากการได้รับยามากเกิน" id="adr8"><label class="form-check-label fw-bold text-danger" for="adr8">มีประวัติหกล้ม (Falls) ล่าสุด</label></div>
-            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="คลื่นไส้/อาเจียน" data-suggest="แนะนำรับประทานยาพร้อมของว่างเล็กน้อย หรือพิจารณาให้ Domperidone" id="adr2"><label class="form-check-label" for="adr2">คลื่นไส้/อาเจียน</label></div>
-            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="กลืนลำบาก (Dysphagia)" data-suggest="พบปัญหากลืนลำบาก: ระวังการสำลัก แนะนำประเมินการกลืน หรือปรับรูปแบบยาให้กลืนง่ายขึ้น (เป็นยาน้ำ/บดยา)" id="adr10"><label class="form-check-label fw-bold text-danger" for="adr10">กลืนลำบาก (Dysphagia)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="มีประวัติหกล้ม (Falls)" data-suggest="ผู้ป่วยมีประวัติหกล้ม อาจเกิดจากภาวะโรคดาเนินไป, OFF-time, หรือผลข้างเคียงจากการได้รับยามากเกิน" id="adr8"><label class="form-check-label fw-bold text-danger" for="adr8">มีประวัติหกล้ม (Falls) ล่าสุด</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="คลื่นไส้/อาเจียน" data-suggest="แนะนารับประทานยาพร้อมของว่างเล็กน้อย หรือพิจารณาให้ Domperidone" id="adr2"><label class="form-check-label" for="adr2">คลื่นไส้/อาเจียน</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="กลืนลาบาก (Dysphagia)" data-suggest="พบปัญหากลืนลาบาก: ระวังการสาลัก แนะนาประเมินการกลืน หรือปรับรูปแบบยาให้กลืนง่ายขึ้น (เป็นยาน้า/บดยา)" id="adr10"><label class="form-check-label fw-bold text-danger" for="adr10">กลืนลาบาก (Dysphagia)</label></div>
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ภาพหลอน/สับสน (Hallucinations)" data-suggest="ระวังการใช้ยา Anti-cholinergic ในผู้สูงอายุ หรือลด Dose Dopamine Agonist" id="adr6"><label class="form-check-label" for="adr6">ภาพหลอน/สับสน</label></div>
         </div>
         <div class="col-md-6">
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="นอนไม่หลับ (Insomnia)" data-suggest="พิจารณาขยับเวลายามื้อเย็นให้เร็วขึ้น หลีกเลี่ยง MAO-B มื้อเย็น" id="adr4"><label class="form-check-label" for="adr4">นอนไม่หลับ (Insomnia)</label></div>
-            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ท้องผูกรุนแรง (Constipation)" data-suggest="แนะนำดื่มน้ำมากๆ เพิ่มกากใย หรือพิจารณาเพิ่มยาระบาย" id="adr5"><label class="form-check-label" for="adr5">ท้องผูกรุนแรง (Constipation)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ท้องผูกรุนแรง (Constipation)" data-suggest="แนะนาดื่มน้ามากๆ เพิ่มกากใย หรือพิจารณาเพิ่มยาระบาย" id="adr5"><label class="form-check-label" for="adr5">ท้องผูกรุนแรง (Constipation)</label></div>
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ง่วงซึมมากผิดปกติช่วงกลางวัน (EDS)" data-suggest="ระวังผลข้างเคียงจากยา Dopamine Agonist พิจารณาปรับลดยา" id="adr3"><label class="form-check-label" for="adr3">ง่วงซึมมากช่วงกลางวัน (EDS)</label></div>
-            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="น้ำลายไหล (Drooling)" data-suggest="พบปัญหาน้ำลายไหล: แนะนำให้ผู้ป่วยกลืนน้ำลายบ่อยๆ อมลูกอม/หมากฝรั่ง หรือแพทย์อาจพิจารณาปรับยา" id="adr9"><label class="form-check-label" for="adr9">น้ำลายไหล (Drooling)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="น้าลายไหล (Drooling)" data-suggest="พบปัญหาน้าลายไหล: แนะนาให้ผู้ป่วยกลืนน้าลายบ่อยๆ อมลูกอม/หมากฝรั่ง หรือแพทย์อาจพิจารณาปรับยา" id="adr9"><label class="form-check-label" for="adr9">น้าลายไหล (Drooling)</label></div>
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ปัสสาวะสีส้ม/แดง" data-suggest="เป็นผลข้างเคียงปกติของยา Entacapone ให้อธิบายผู้ป่วย" id="adr7"><label class="form-check-label" for="adr7">ปัสสาวะสีส้ม/แดง (Entacapone)</label></div>
         </div>
         </div>
@@ -205,11 +233,11 @@
         <div class="row">
         <div class="col-md-6">
             <div class="form-check mb-2">
-                <input class="form-check-input adr-check" type="checkbox" value="Wearing-off (ยาหมดฤทธิ์ก่อนกำหนด)" data-suggest="พบ Wearing-off: พิจารณาเพิ่มยา COMT inhibitor, MAO-B inhibitor หรือลดระยะห่างมื้อยา Levodopa (Fractionation)" id="mc1">
+                <input class="form-check-input adr-check" type="checkbox" value="Wearing-off (ยาหมดฤทธิ์ก่อนกาหนด)" data-suggest="พบ Wearing-off: พิจารณาเพิ่มยา COMT inhibitor, MAO-B inhibitor หรือลดระยะห่างมื้อยา Levodopa (Fractionation)" id="mc1">
                 <label class="form-check-label" for="mc1"><b>Wearing-off</b><br><small class="text-muted">(อาการยาหมดฤทธิ์ก่อนถึงยามื้อถัดไป)</small></label>
             </div>
             <div class="form-check mb-2">
-                <input class="form-check-input adr-check" type="checkbox" value="Delayed ON (ยาออกฤทธิ์ช้า)" data-suggest="พบ Delayed ON: แนะนำเคี้ยว/บดยาก่อนกลืน ดื่มน้ำตามมากๆ ทานขณะท้องว่าง หรือเปลี่ยนเป็นยา Dispersible" id="mc2">
+                <input class="form-check-input adr-check" type="checkbox" value="Delayed ON (ยาออกฤทธิ์ช้า)" data-suggest="พบ Delayed ON: แนะนาเคี้ยว/บดยาก่อนกลืน ดื่มน้าตามมากๆ ทานขณะท้องว่าง หรือเปลี่ยนเป็นยา Dispersible" id="mc2">
                 <label class="form-check-label" for="mc2"><b>Delayed ON</b><br><small class="text-muted">(ยาออกฤทธิ์ช้ากว่าปกติ รอนานกว่ายาจะออกฤทธิ์)</small></label>
             </div>
         </div>
@@ -228,8 +256,8 @@
         <hr class="mt-4"><div class="row align-items-center bg-light p-2 rounded border"><div class="col-md-5"><label class="form-label text-primary fw-bold mb-0">หมวดหมู่ปัญหาด้านยา (DRPs):</label></div><div class="col-md-7"><select id="drpClass" class="form-select border-primary"><option value="ไม่พบปัญหาด้านยา (None)">ไม่พบปัญหาด้านยา (None)</option><option value="Need for additional drug therapy (ND)">Need for additional drug therapy (ND)</option><option value="Adverse drug reaction (ADR)">Adverse drug reaction (ADR)</option><option value="Non-Compliance (NC)">Non-Compliance (NC)</option><option value="Drug interaction (DI)">Drug interaction (DI) (รวม Food-Interaction)</option><option value="พบหลายปัญหา (Multiple DRPs)">พบหลายปัญหา (Multiple DRPs)</option></select></div></div><div class="mt-3"><label class="form-label fw-bold">บันทึกเพิ่มเติมของเภสัชกร:</label><textarea id="adrNote" class="form-control" rows="2" placeholder="เช่น ผู้ป่วยแจ้งทานยา... แล้วมีอาการ..."></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button><button type="button" class="btn btn-danger" onclick="saveADR()">💾 บันทึกข้อมูลแบบคัดกรอง</button></div></div></div></div>
 
 <div class="modal fade no-print" id="kpiModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">📊 รายงานตัวชี้วัด (KPI Report)</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row mb-3"><div class="col-md-6"><label>ตั้งแต่วันที่:</label><input type="date" id="kpiStart" class="form-control"></div><div class="col-md-6"><label>ถึงวันที่:</label><input type="date" id="kpiEnd" class="form-control"></div></div>
-<div class="row mb-3"><div class="col-md-8"><button class="btn btn-success w-100" onclick="fetchKPIReport()">ดึงข้อมูลรายงาน</button></div><div class="col-md-4"><button class="btn btn-info w-100" onclick="exportKPIExcel()">📥 ส่งออก Excel</button></div></div>
-<textarea id="kpiResult" class="form-control bg-light" rows="15" readonly placeholder="ผลการประมวลผลจะแสดงที่นี่..."></textarea></div></div></div></div>
+<div class="row mb-3"><div class="col-md-8"><button class="btn btn-success w-100" onclick="fetchKPIReport()">ดึงข้อมูลรายงาน</button></div><div class="col-md-4"><button class="btn btn-info w-100 text-white fw-bold" onclick="exportKPIExcel()">📥 ส่งออก Excel</button></div></div>
+<textarea id="kpiResult" class="form-control bg-light text-dark" rows="15" readonly placeholder="ผลการประมวลผลจะแสดงที่นี่..."></textarea></div></div></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script type="text/javascript" src="https://unpkg.com/vis-timeline@7.7.3/standalone/umd/vis-timeline-graph2d.min.js"></script>
