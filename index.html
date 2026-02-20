@@ -1,396 +1,238 @@
-// 🔴 1. ใส่ URL API ของ Google Apps Script ที่นี่ 🔴
-const API_URL = "https://script.google.com/macros/s/AKfycbzJ_FI7UePuEJ9-QG7w64pTG3vWhsitGFQ1NcrLgvDb2a0oQzhpmN4rTo8DbJ783Kc/exec"; 
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parkinson's Clinic Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://unpkg.com/vis-timeline@7.7.3/styles/vis-timeline-graph2d.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment-with-locales.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Sarabun', sans-serif; }
+        
+        #viz-container { width: 100%; background-color: #fff; border: 1px solid #ddd; margin-top: 10px; padding: 5px; }
+        #visualization { width: 100%; height: 400px; }
+        
+        .vis-item.vis-range { border-radius: 4px; box-shadow: 1px 1px 2px rgba(0,0,0,0.2); font-size: 12px; }
+        .vis-item .vis-item-content { padding: 0 4px; }
+        
+        .med-ldopa-ir { background-color: #4CAF50 !important; color: white !important; border-color: #388E3C !important; }
+        .med-ldopa-cr { background-color: #1B5E20 !important; color: white !important; border-color: #144018 !important; }
+        .med-ldopa-fast { background-color: #8BC34A !important; color: black !important; border-color: #689F38 !important; }
+        .med-comt { background-color: #FF9800 !important; color: white !important; border-color: #F57C00 !important; }
+        .med-agonist { background-color: #2196F3 !important; color: white !important; border-color: #1976D2 !important; }
+        .med-mao { background-color: #9C27B0 !important; color: white !important; border-color: #7B1FA2 !important; }
+        .med-antichoc { background-color: #795548 !important; color: white !important; border-color: #5D4037 !important; }
+        
+        .log-off { background-color: #9E9E9E !important; color: white !important; border-color: #616161 !important; font-weight: bold; }
+        .log-dyskinesia { background-color: #F44336 !important; color: white !important; border-color: #d32f2f !important; font-weight: bold; }
+        
+        .simulation-panel, .symptom-panel { background-color: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .legend-box { display: inline-block; width: 12px; height: 12px; margin-right: 3px; vertical-align: middle; border-radius: 2px;}
+        .print-only { display: none; }
 
-let drugMaster = []; 
-let timeline; 
-let timelineItems; 
-let timelineGroups; 
-let currentPatientId = "";
-let savedADRData = { symptoms: [], advices: [], note: "", drpClass: "ไม่พบปัญหาด้านยา (None)" };
+        /* ========================================= */
+        /* 🖨️ CSS PRINT SETUP (A5 Landscape)         */
+        /* ========================================= */
+        @media print {
+            @page { size: A5 landscape; margin: 5mm; } 
+            body { background-color: #fff; font-size: 9pt; display: block; padding: 0 !important; -webkit-print-color-adjust: exact; }
+            .no-print, .simulation-panel, .card, .alert, .btn, .modal { display: none !important; }
+            .print-only { display: block !important; margin-bottom: 2px; }
+            .container { width: 100% !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 
-document.addEventListener('DOMContentLoaded', () => {
-    fetch('./drugs.json').then(r => r.json()).then(d => { 
-        drugMaster = d; 
-        const s=document.getElementById('simDrug'); 
-        d.forEach(x=>s.add(new Option(x.name,x.id))); 
-    }).catch(e=>alert("โหลดฐานข้อมูลยาล้มเหลว"));
-
-    // 🌟 2. ตัวช่วยพิมพ์เวลา (Smart Time Input: พิมพ์ 0800 จะแปลงเป็น 08:00 อัตโนมัติ)
-    document.querySelectorAll('.time-input').forEach(inp => {
-        inp.addEventListener('input', function(e) {
-            let v = this.value.replace(/[^0-9]/g, ''); // บังคับรับแค่ตัวเลข
-            if (v.length >= 3) {
-                v = v.substring(0, 2) + ':' + v.substring(2, 4);
+            /* --- หน้า 1: กราฟรูปภาพ --- */
+            #page1-wrapper {
+                height: 135mm; width: 100%; position: relative;
+                page-break-after: always; overflow: hidden;
+                display: flex; flex-direction: column; align-items: center;
             }
-            this.value = v;
-        });
-        inp.addEventListener('blur', function() {
-            // ถ้ากรอกไม่ครบ 4 ตัว เช่น 800 ให้ปัดเป็น 08:00
-            let v = this.value.replace(/[^0-9]/g, '');
-            if(v.length === 3) v = '0' + v;
-            if(v.length === 4) {
-                this.value = v.substring(0, 2) + ':' + v.substring(2, 4);
+            #viz-container { display: none !important; }
+            
+            #graph-snapshot-container {
+                display: block !important; width: 100%; text-align: left; margin-top: 5px;
             }
-        });
-    });
-});
+            #graph-snapshot {
+                width: 100%; height: auto; max-height: 125mm; object-fit: contain; object-position: left top; border: 1px solid #000;
+            }
+            .legend-row { display: none !important; }
 
-async function loadPatientData() {
-    const q = document.getElementById('pdInput').value.trim();
-    if(!q) return alert('กรอก HN หรือ PD No.');
-    
-    savedADRData = { symptoms: [], advices: [], note: "", drpClass: "ไม่พบปัญหาด้านยา (None)" };
-    document.querySelectorAll('.adr-check').forEach(cb => cb.checked = false);
-    if(document.getElementById('drpClass')) document.getElementById('drpClass').value = "ไม่พบปัญหาด้านยา (None)";
-    document.getElementById('adrNote').value = "";
-    document.getElementById('reportArea').classList.add('d-none');
-    
-    try {
-        const res = await fetch(`${API_URL}?action=getPatientData&pd_no=${q}`);
-        const data = await res.json();
-        if(data.status === 'success') {
-            currentPatientId = data.data.patient.PD_No;
-            document.getElementById('pName').innerText = `👤 ${data.data.patient.Name} (อายุ: ${data.data.patient.Age})`;
-            document.getElementById('pHN').innerText = `HN: ${data.data.patient.HN}`;
+            /* --- หน้า 2: รายงาน (2 คอลัมน์) --- */
+            #reportArea { display: block !important; margin-top: 0 !important; border: none !important; padding: 0 !important; width: 100%; position: relative; }
+            .print-row { display: flex !important; flex-wrap: nowrap !important; justify-content: space-between; width: 100%; align-items: flex-start; }
+            .print-col-left { width: 49%; padding-right: 8px; border-right: 1px solid #ccc; }
+            .print-col-right { width: 49%; padding-left: 8px; }
             
-            let hTxt = `ผู้ป่วย: ${data.data.patient.Name} | อายุ: ${data.data.patient.Age} ปี | HN: ${data.data.patient.HN}`;
-            document.getElementById('printPatientNameHn1').innerText = hTxt;
-            document.getElementById('printPatientNameHn2').innerText = hTxt;
-            
-            document.getElementById('patientInfoCard').classList.remove('d-none');
-            document.getElementById('simulationPanel').classList.remove('d-none');
-            document.getElementById('btnArchive').classList.remove('d-none');
-            renderTimeline(data.data.medications, data.data.logs);
-        } else alert(data.message);
-    } catch(e) { alert('เชื่อมต่อล้มเหลว'); }
-}
+            ul { margin-bottom: 2px !important; padding-left: 1.2rem !important; }
+            li { margin-bottom: 1px !important; }
+            .report-header { font-size: 10pt; font-weight: bold; margin-top: 5px; margin-bottom: 3px; text-decoration: underline; color: #000 !important; }
 
-function getDrugClass(t) {
-    if(!t) return 'med-ldopa-ir';
-    if(t.includes('CR')) return 'med-ldopa-cr';
-    if(t.includes('Fast')) return 'med-ldopa-fast';
-    if(t.includes('L-Dopa')) return 'med-ldopa-ir';
-    if(t.includes('COMT')) return 'med-comt';
-    if(t.includes('Agonist')) return 'med-agonist';
-    if(t.includes('MAO')) return 'med-mao';
-    if(t.includes('Anti')) return 'med-antichoc';
-    return 'med-ldopa-ir';
-}
-
-function renderTimeline(meds, logs) {
-    const c = document.getElementById('visualization'); c.innerHTML = "";
-    timelineItems = new vis.DataSet(); timelineGroups = new vis.DataSet();
-    
-    timelineGroups.add({ id: 'spacer', content: '', style: 'height: 50px; background: transparent; border: none;', order: 2 });
-    timelineGroups.add({ id: 'symptoms', content: '<b>🚨 อาการ</b>', order: 3 });
-
-    const today = new Date().toISOString().split('T')[0];
-    moment.locale('th'); 
-
-    meds.forEach(m => {
-        const info = drugMaster.find(d => d.id === m.Drug_ID) || {};
-        const name = info.name || m.Trade_Name;
-        const onset = Number(info.onset || m.Onset_min || 30);
-        const dur = Number(info.duration || m.Duration_hr || 4);
-        
-        if(!timelineGroups.get(m.Drug_ID)) timelineGroups.add({ id: m.Drug_ID, content: name, order: 1 });
-
-        let timeStr = m.Time_Take || "08:00"; 
-        if(timeStr.includes("T")) {
-            timeStr = timeStr.split("T")[1].substring(0, 5);
-        } else if (timeStr.length > 5) {
-            timeStr = timeStr.substring(0, 5);
+            .signature-box {
+                margin-top: 40px; margin-right: 20px; width: 200px; text-align: center;
+                border-top: 1px solid #000; padding-top: 5px; float: right;
+            }
         }
+    </style>
+</head>
+<body>
 
-        let start = new Date(`${today}T${timeStr}:00`).getTime() + (onset*60000);
-        let end = start + (dur*3600000);
-        let mid = new Date(`${today}T23:59:59`).getTime();
-        let subId = m.Drug_ID; // 🌟 ใช้ Drug_ID เป็น Subgroup บังคับให้อยู่บรรทัดเดียวกัน
-
-        let commonData = {
-            id: m.Drug_ID, 
-            Trade_Name: name, 
-            Dose: m.Dose, 
-            onset: onset, 
-            Time_Take: timeStr, 
-            isOriginal: true 
-        };
-
-        if(end > mid) {
-            timelineItems.add({ id: `M_${Math.random()}`, group: m.Drug_ID, content: `${m.Dose}`, start: new Date(start), end: new Date(mid), className: getDrugClass(info.type), subgroup: subId, _drugData: commonData });
-            timelineItems.add({ id: `M_W_${Math.random()}`, group: m.Drug_ID, content: `(ต่อ)`, start: new Date(`${today}T00:00:00`), end: new Date(new Date(`${today}T00:00:00`).getTime() + (end-mid)), className: getDrugClass(info.type), subgroup: subId, style: 'opacity:0.7; border-style:dashed;', _drugData: {id: m.Drug_ID, isWrapped: true } });
-        } else {
-            timelineItems.add({ id: `M_${Math.random()}`, group: m.Drug_ID, content: `${m.Dose}`, start: new Date(start), end: new Date(end), className: getDrugClass(info.type), subgroup: subId, _drugData: commonData });
-        }
-    });
-
-    logs.forEach(l => {
-        if(l.Event_Type === 'OFF-Time' || l.Event_Type === 'Dyskinesia') {
-            let s = new Date(`${today}T${l.Start_Time.substring(0,5)}:00`);
-            let e = new Date(`${today}T${l.End_Time.substring(0,5)}:00`);
-            timelineItems.add({ id: l.Log_ID, group: 'symptoms', content: l.Event_Type, start: s, end: e, className: l.Event_Type === 'OFF-Time'?'log-off':'log-dyskinesia' });
-        }
-    });
-
-    timeline = new vis.Timeline(c, timelineItems, timelineGroups, {
-        start: new Date(`${today}T00:00:00`), end: new Date(`${today}T23:59:59`),
-        stack: true, groupOrder: 'order', margin: { item: 10, axis: 5 },
-        zoomable: false, locale: 'th',
-        editable: { add: false, updateTime: true, remove: true },
-        onRemove: (item, cb) => { if(confirm("ลบข้อมูล?")) { fetch(API_URL, {method:'POST', body:JSON.stringify({action:'deleteLog', Log_ID:item.id})}); cb(item); } else cb(null); }
-    });
-}
-
-// ระบบพิมพ์: กางรูป 100% ชิดขอบ
-function printSystem() {
-    const today = new Date().toISOString().split('T')[0];
-    timeline.setWindow(new Date(`${today}T00:00:00`), new Date(`${today}T23:59:59`), { animation: false });
+<div class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+        <h2 class="text-primary m-0">🩺 แดชบอร์ดคลินิกพาร์กินสัน</h2>
+        <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#kpiModal">📊 KPI Report</button>
+    </div>
     
-    generateReport();
-    document.getElementById('reportArea').classList.remove('d-none');
+    <div class="card p-3 mb-3 shadow-sm no-print">
+        <div class="row align-items-end">
+            <div class="col-md-5"><label class="form-label">ค้นหาข้อมูลผู้ป่วย</label><input type="text" id="pdInput" class="form-control fw-bold" placeholder="กรอก HN หรือ รหัส PD No."></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100" onclick="loadPatientData()">🔍 ค้นหา</button></div>
+            <div class="col-md-5 text-end"><button class="btn btn-warning btn-sm d-none" id="btnArchive" onclick="archiveOldLogs()">🧹 เริ่ม Visit ใหม่</button></div>
+        </div>
+    </div>
 
-    setTimeout(() => {
-        let viz = document.querySelector('#visualization');
-        let originalW = viz.style.width;
-        viz.style.width = "1800px"; // ขยายชดเชยที่ว่างด้านขวา
+    <div id="patientInfoCard" class="alert alert-info d-none d-flex justify-content-between align-items-center no-print">
+        <div><h5 id="pName" class="mb-1 fw-bold"></h5><span id="pHN"></span></div>
+        <button class="btn btn-dark" onclick="saveMedsToDB()">💾 บันทึกยา</button>
+    </div>
+
+    <div id="simulationPanel" class="d-none no-print">
+        <div class="row">
+            <div class="col-md-7">
+                <div class="simulation-panel h-100">
+                    <h6 class="text-primary">⚙️ จัดการรายการยา (Medications)</h6>
+                    <div class="row align-items-end mt-3">
+                        <div class="col-md-6"><select id="simDrug" class="form-select"></select></div>
+                        <div class="col-md-3"><input type="text" id="simDose" class="form-control" placeholder="Dose"></div>
+                        <div class="col-md-3"><input type="text" id="simTime" class="form-control time-input" placeholder="เวลา (0800)" maxlength="5"></div>
+                    </div>
+                    <button class="btn btn-success w-100 mt-2" onclick="addSimulatedMed()">➕ เติมยาลงกราฟ</button>
+                </div>
+            </div>
+            <div class="col-md-5">
+                <div class="symptom-panel h-100" style="background-color: #fce4ec; border-color: #f48fb1;">
+                    <h6 class="text-danger">🚨 บันทึกอาการ</h6>
+                    <select id="symType" class="form-select mt-3 mb-2"><option value="OFF-Time">OFF-Time</option><option value="Dyskinesia">Dyskinesia</option></select>
+                    <div class="row align-items-end">
+                        <div class="col-md-5"><label class="small text-muted mb-1">เริ่ม</label><input type="text" id="symStart" class="form-control time-input" placeholder="0000" maxlength="5"></div>
+                        <div class="col-md-5"><label class="small text-muted mb-1">สิ้นสุด</label><input type="text" id="symEnd" class="form-control time-input" placeholder="0000" maxlength="5"></div>
+                        <div class="col-md-2"><button class="btn btn-danger w-100" style="margin-top: 24px;" onclick="addManualSymptom()">➕</button></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-2 mb-2">
+            <div>
+                <button class="btn btn-outline-primary btn-sm" onclick="analyzeRegimen()">💡 วิเคราะห์ AI</button>
+                <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#adrModal">📋 คัดกรอง ADR</button>
+            </div>
+            <button class="btn btn-warning btn-sm" onclick="printSystem()">🖨️ สร้างใบสรุปแพทย์ (A5)</button>
+        </div>
+    </div>
+
+    <div id="aiRecommendationArea" class="ai-panel d-none no-print">
+        <h5 id="aiTitle" class="text-success mb-3"></h5>
+        <div class="alert alert-success"><strong>🌟 คำแนะนำ:</strong><p id="aiBest" class="mb-0 mt-1"></p></div>
+        <div class="alert alert-secondary"><strong>🔄 ตัวเลือกอื่น:</strong><ul id="aiOptions" class="mb-0 mt-1"></ul></div>
+    </div>
+
+    <div id="page1-wrapper">
+        <div class="print-only text-center" style="border-bottom: 1px solid #000; padding-bottom: 3px;">
+            <h6 class="fw-bold m-0">ใบสรุปแผนการรักษาและปรับยา Parkinson's (หน้า 1/2)</h6>
+            <div id="printPatientNameHn1"></div>
+        </div>
+        <div id="viz-container"><div id="visualization"></div></div>
+        <div id="graph-snapshot-container" class="print-only" style="display:none;"><img id="graph-snapshot" src="" alt="Graph Snapshot"></div>
+        <div class="legend-row small text-center mt-1 no-print"><span class="legend-box" style="background-color: #4CAF50;"></span>IR <span class="legend-box" style="background-color: #1B5E20;"></span>CR <span class="legend-box" style="background-color: #8BC34A;"></span>Disp <span class="legend-box" style="background-color: #FF9800;"></span>COMT <span class="legend-box" style="background-color: #2196F3;"></span>Agonist <span class="legend-box" style="background-color: #9C27B0;"></span>MAO-B <span class="legend-box" style="background-color: #9E9E9E;"></span><b>OFF</b> <span class="legend-box" style="background-color: #F44336;"></span><b>Dys</b></div>
+    </div>
+
+    <div id="reportArea" class="mt-4 p-4 bg-white border rounded shadow-sm d-none">
+        <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+            <h5 class="text-success m-0 fw-bold">📄 ใบสรุปแพทย์ (พร้อมพิมพ์)</h5>
+            <button class="btn btn-primary" onclick="window.print()">🖨️ พิมพ์ (A5)</button>
+        </div>
+        <div class="print-only text-center" style="border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 5px;">
+            <h6 class="fw-bold m-0">ใบสรุปแผนการรักษาและปรับยา Parkinson's (หน้า 2/2)</h6>
+            <div id="printPatientNameHn2"></div>
+        </div>
+        <div id="reportContent"></div>
+    </div>
+</div>
+
+<div class="modal fade no-print" id="adrModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white"><h5 class="modal-title">📋 แบบคัดกรอง DRPs</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
         
-        html2canvas(viz, { scale: 2, logging: false }).then(canvas => {
-            viz.style.width = originalW;
-            document.getElementById('graph-snapshot').src = canvas.toDataURL("image/png");
-        });
-    }, 500);
-}
-
-function generateReport() {
-    let all = timelineItems.get();
-    let meds = {}; 
-    let offMs = 0, dysMs = 0;
-    
-    all.forEach(i => {
-        if(i.group !== 'symptoms' && i._drugData && i._drugData.isOriginal) {
-            let time = i._drugData.Time_Take || "00:00";
-            if(!meds[i._drugData.Trade_Name]) meds[i._drugData.Trade_Name] = [];
-            meds[i._drugData.Trade_Name].push(`<b>${i._drugData.Dose}</b> (${time})`);
-        }
-        if(i.content === 'OFF-Time') offMs += (i.end - i.start);
-        if(i.content === 'Dyskinesia') dysMs += (i.end - i.start);
-    });
-
-    let html = `<div class="print-row"><div class="print-col-left">`;
-    
-    if(offMs > 0 || dysMs > 0) {
-        let offH = (offMs/3600000).toFixed(1);
-        let dysH = (dysMs/3600000).toFixed(1);
-        let offPct = ((offH/16)*100).toFixed(1);
-        let dysPct = ((dysH/16)*100).toFixed(1);
-        let offSev = offPct<=25?"เล็กน้อย":(offPct<=50?"ปานกลาง":"รุนแรง");
-        let dysSev = dysPct<=25?"เล็กน้อย":(dysPct<=50?"ปานกลาง":"รุนแรง");
-
-        html += `<div class="report-header text-primary">📊 Motor Fluctuations:</div><ul>`;
-        if(offMs) html += `<li>Wearing-off: ${offH} ชม. (${offPct}% - ${offSev})</li>`;
-        if(dysMs) html += `<li>Dyskinesia: ${dysH} ชม. (${dysPct}% - ${dysSev})</li>`;
-        html += `</ul>`;
-    }
-
-    html += `<div class="report-header text-success">📌 แผนการจัดตารางยาใหม่:</div><ul>`;
-    for(let k in meds) html += `<li><strong>${k}</strong>: ${meds[k].sort().join(', ')}</li>`;
-    html += `</ul>`;
-
-    html += `<div class="report-header text-danger">⚠️ DRPs [${savedADRData.drpClass}]:</div>`;
-    if(savedADRData.symptoms.length > 0) {
-        html += `<ul>${savedADRData.symptoms.map(s => `<li>[X] ${s}</li>`).join('')}</ul>`;
-    } else html += `<p>- ไม่พบปัญหา DRPs</p>`;
-    html += `</div>`;
-
-    html += `<div class="print-col-right">`;
-    
-    let interventions = [];
-    let hasFoodInt = savedADRData.symptoms.some(s => s.includes("ทานยาก่อนอาหาร"));
-    let hasDoseRed = savedADRData.symptoms.some(s => s.includes("ปรับลดขนาดยา"));
-    let hasNgTube = savedADRData.symptoms.some(s => s.includes("บริหารยาทางสายยาง"));
-    let hasPostural = savedADRData.symptoms.some(s => s.includes("ทรงตัวลำบาก"));
-    
-    if (hasNgTube && Object.keys(meds).some(m => m.includes("HBS") || m.includes("PD 24h"))) {
-        interventions.push(`🚨 <b>[CRITICAL]</b> ห้ามบดยา CR (HBS, PD 24h) ในผู้ป่วย NG Tube เปลี่ยนเป็น IR/Dispersible`);
-    }
-    if (hasPostural) interventions.push(`🚨 <b>[Warning]</b> ทรงตัวลำบากช่วง OFF-time เสี่ยงหกล้มสูง ควรปรับยา`);
-    if (offMs > 0 && hasFoodInt) interventions.push(`🚨 <b>[Warning]</b> OFF-time อาจเกิดจาก Food-Interaction เน้นย้ำเวลายา`);
-    
-    [...new Set(savedADRData.advices)].forEach(adv => interventions.push(adv));
-
-    if(interventions.length > 0) {
-        html += `<div class="report-header text-primary">💡 ข้อเสนอแนะเภสัชกร:</div><ul>`;
-        interventions.forEach(inv => html += `<li>${inv}</li>`);
-        html += `</ul>`;
-    }
-
-    if(savedADRData.note) html += `<div class="mt-2 p-1 bg-light border rounded"><strong>📝 บันทึกเพิ่มเติม:</strong><br>${savedADRData.note}</div>`;
-    
-    html += `<div class="signature-box">ลงชื่อเภสัชกรผู้ประเมิน</div></div></div>`;
-
-    document.getElementById('reportContent').innerHTML = html;
-}
-
-// ตัวแปลงวันที่เพื่อเทียบหา KPI
-function normalizeDateStr(dStr) {
-    if(!dStr) return "1970-01-01";
-    if(dStr.includes("T")) return dStr.split("T")[0]; 
-    if(dStr.includes("/")) {
-        let p = dStr.split("/");
-        let d = p[0].padStart(2, '0');
-        let m = p[1].padStart(2, '0');
-        let y = parseInt(p[2], 10);
-        if(y > 2500) y -= 543; // แปลง พ.ศ. เป็น ค.ศ.
-        return `${y}-${m}-${d}`;
-    }
-    return dStr; 
-}
-
-// 🌟 ระบบ KPI แบบเจาะลึก อิงฟอร์ม Word
-async function fetchKPIReport() {
-    let startInput = document.getElementById('kpiStart').value;
-    let endInput = document.getElementById('kpiEnd').value;
-    if(!startInput || !endInput) return alert("กรุณาเลือกวันที่");
-
-    try {
-        document.getElementById('kpiResult').value = "กำลังดึงข้อมูลและประมวลผล...";
-        const res = await fetch(`${API_URL}?action=getKPIReport`);
-        const data = await res.json();
+        <h6 class="text-primary mt-2">1. ปัญหาด้านวิธีการบริหารยา และอาหาร</h6>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ทานยาก่อนอาหารน้อยกว่า 30 นาที หรือหลังอาหารไม่ถึง 1 ชม." data-suggest="แนะนำรับประทานยาก่อนอาหารอย่างน้อย 30 นาที หรือหลังอาหาร 1-2 ชั่วโมง" id="dfi1"><label class="form-check-label" for="dfi1">ทานยาก่อนอาหารน้อยกว่า 30 นาที หรือหลังอาหารไม่ถึง 1 ชม.</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="รับประทานยาพร้อมอาหารโปรตีนสูง" data-suggest="หลีกเลี่ยงการรับประทานยาพร้อมอาหารโปรตีนสูง เนื่องจากแย่งยาดูดซึมที่ลำไส้" id="dfi2"><label class="form-check-label" for="dfi2">รับประทานยาพร้อมอาหารโปรตีนสูง (เช่น นม เนื้อสัตว์)</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="บริหารยาทางสายยาง (NG Tube)" data-suggest="ตรวจสอบข้อห้ามในการบดยา (เช่น ห้ามบด Madopar HBS, Requip PD 24h) และพิจารณาปรับรูปแบบยาเป็น Dispersible" id="admin1"><label class="form-check-label fw-bold text-danger" for="admin1">ผู้ป่วยบริหารอาหารและยาทางสายยาง (NG Tube)</label></div>
         
-        let targetLogs = data.logs.filter(l => {
-            let logDate = normalizeDateStr(l.Date);
-            return logDate >= startInput && logDate <= endInput;
-        });
+        <h6 class="text-primary mt-4">2. ความร่วมมือในการใช้ยา (Non-Compliance)</h6>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ลืมกินยาบ่อย (ขาดผู้ดูแลกำกับ)" data-suggest="ผู้ป่วยลืมทานยาบ่อย/ขาดผู้ดูแลกำกับ เสนอแพทย์ปรับตารางยาให้ง่ายขึ้น" id="comp1"><label class="form-check-label" for="comp1">ลืมกินยาบ่อย (ขาดผู้ดูแลกำกับ)</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="รับประทานยาผิดขนาด/ไม่อ่านฉลาก" data-suggest="เภสัชกรอธิบายวิธีใช้ยาซ้ำและเน้นย้ำให้อ่านฉลากทุกครั้ง" id="comp6"><label class="form-check-label" for="comp6">รับประทานยาผิดขนาด/ไม่อ่านฉลากยา</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ปรับเพิ่มขนาดยาเอง (เพื่อหวังผลการรักษา)" data-suggest="ผู้ป่วยปรับเพิ่มยาเอง เสี่ยงต่อ Dyskinesia เภสัชกรเน้นย้ำอันตราย" id="comp2"><label class="form-check-label text-danger" for="comp2">ปรับเพิ่มขนาดยาเอง (หวังผลการรักษา)</label></div>
+        <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ปรับลดขนาดยาเอง (ทนผลข้างเคียงไม่ได้)" data-suggest="ผู้ป่วยปรับลดยาเองเนื่องจากอาการข้างเคียง บันทึกเพื่อให้แพทย์พิจารณาปรับขนาดยา" id="comp3"><label class="form-check-label text-danger" for="comp3">ปรับลดขนาดยาเอง (ทนผลข้างเคียงไม่ได้)</label></div>
         
-        let uniquePatients = new Set(targetLogs.map(l => l.PD_No));
-        let totalPatients = uniquePatients.size;
+        <h6 class="text-danger mt-4">3. ลักษณะอาการ OFF-Time</h6>
+        <div class="row">
+        <div class="col-md-6"><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: อาการสั่นขณะพัก (Resting tremor)" id="off1"><label class="form-check-label" for="off1">สั่นขณะพัก (Tremor)</label></div><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: อาการแข็งเกร็ง (Rigidity)" id="off2"><label class="form-check-label" for="off2">แข็งเกร็ง (Rigidity)</label></div></div>
+        <div class="col-md-6"><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: เคลื่อนไหวช้า (Bradykinesia)" id="off3"><label class="form-check-label" for="off3">เคลื่อนไหวช้า (Bradykinesia)</label></div><div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="OFF-Time: ทรงตัวลำบาก (Postural instability)" data-suggest="ผู้ป่วยมีปัญหาทรงตัวลำบากในช่วงยาหมดฤทธิ์ เสี่ยงต่อการหกล้มสูง ควรประเมินการปรับยาเพื่อลดรอยต่อมื้อยา" id="off4"><label class="form-check-label fw-bold text-danger" for="off4">ทรงตัวลำบาก / เดินเซ (Postural instability)</label></div></div>
+        </div>
         
-        let cMotorAny = 0, cOff = 0, cDys = 0, cDelOn = 0, cMornAki = 0;
-        let cDrpAny = 0, cNonComp = 0, cDrugFood = 0, cAdr = 0;
+        <h6 class="text-danger mt-4">4. อาการข้างเคียง (ADR & Safety)</h6>
+        <div class="row">
+        <div class="col-md-6">
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="หน้ามืด/วูบเวลาเปลี่ยนท่า (Orthostatic Hypotension)" data-suggest="ระวังภาวะความดันตกขณะเปลี่ยนท่า แนะนำให้ลุกช้าๆ หรือแพทย์พิจารณาปรับยา" id="adr1"><label class="form-check-label fw-bold text-danger" for="adr1">หน้ามืด/วูบเวลาเปลี่ยนท่า</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="วิงเวียนศรีษะ (Dizziness)" data-suggest="พบอาการวิงเวียนศรีษะ: ระวังความเสี่ยงในการหกล้ม ควรประเมินความดันโลหิตตกขณะเปลี่ยนท่าร่วมด้วย" id="adr11"><label class="form-check-label" for="adr11">วิงเวียนศรีษะ (Dizziness)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="มีประวัติหกล้ม (Falls)" data-suggest="ผู้ป่วยมีประวัติหกล้ม อาจเกิดจากภาวะโรคดำเนินไป, OFF-time, หรือผลข้างเคียงจากการได้รับยามากเกิน" id="adr8"><label class="form-check-label fw-bold text-danger" for="adr8">มีประวัติหกล้ม (Falls) ล่าสุด</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="คลื่นไส้/อาเจียน" data-suggest="แนะนำรับประทานยาพร้อมของว่างเล็กน้อย หรือพิจารณาให้ Domperidone" id="adr2"><label class="form-check-label" for="adr2">คลื่นไส้/อาเจียน</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="กลืนลำบาก (Dysphagia)" data-suggest="พบปัญหากลืนลำบาก: ระวังการสำลัก แนะนำประเมินการกลืน หรือปรับรูปแบบยาให้กลืนง่ายขึ้น (เป็นยาน้ำ/บดยา)" id="adr10"><label class="form-check-label fw-bold text-danger" for="adr10">กลืนลำบาก (Dysphagia)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ภาพหลอน/สับสน (Hallucinations)" data-suggest="ระวังการใช้ยา Anti-cholinergic ในผู้สูงอายุ หรือลด Dose Dopamine Agonist" id="adr6"><label class="form-check-label" for="adr6">ภาพหลอน/สับสน</label></div>
+        </div>
+        <div class="col-md-6">
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="นอนไม่หลับ (Insomnia)" data-suggest="พิจารณาขยับเวลายามื้อเย็นให้เร็วขึ้น หลีกเลี่ยง MAO-B มื้อเย็น" id="adr4"><label class="form-check-label" for="adr4">นอนไม่หลับ (Insomnia)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ท้องผูกรุนแรง (Constipation)" data-suggest="แนะนำดื่มน้ำมากๆ เพิ่มกากใย หรือพิจารณาเพิ่มยาระบาย" id="adr5"><label class="form-check-label" for="adr5">ท้องผูกรุนแรง (Constipation)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ง่วงซึมมากผิดปกติช่วงกลางวัน (EDS)" data-suggest="ระวังผลข้างเคียงจากยา Dopamine Agonist พิจารณาปรับลดยา" id="adr3"><label class="form-check-label" for="adr3">ง่วงซึมมากช่วงกลางวัน (EDS)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="น้ำลายไหล (Drooling)" data-suggest="พบปัญหาน้ำลายไหล: แนะนำให้ผู้ป่วยกลืนน้ำลายบ่อยๆ อมลูกอม/หมากฝรั่ง หรือแพทย์อาจพิจารณาปรับยา" id="adr9"><label class="form-check-label" for="adr9">น้ำลายไหล (Drooling)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ปัสสาวะสีส้ม/แดง" data-suggest="เป็นผลข้างเคียงปกติของยา Entacapone ให้อธิบายผู้ป่วย" id="adr7"><label class="form-check-label" for="adr7">ปัสสาวะสีส้ม/แดง (Entacapone)</label></div>
+        </div>
+        </div>
 
-        uniquePatients.forEach(pd => {
-            let pLogs = targetLogs.filter(l => l.PD_No === pd);
-            
-            // หมวด Motor Complications
-            let hasOff = pLogs.some(l => l.Event_Type === 'OFF-Time' || (l.Detail_Note && l.Detail_Note.includes('Wearing-off')));
-            let hasDys = pLogs.some(l => l.Event_Type === 'Dyskinesia' || (l.Detail_Note && l.Detail_Note.includes('Dyskinesia')));
-            let hasDelOn = pLogs.some(l => l.Detail_Note && l.Detail_Note.includes('Delayed ON'));
-            let hasMorn = pLogs.some(l => l.Detail_Note && l.Detail_Note.includes('Morning Akinesia'));
-            if(hasOff || hasDys || hasDelOn || hasMorn) cMotorAny++;
-            if(hasOff) cOff++; if(hasDys) cDys++; if(hasDelOn) cDelOn++; if(hasMorn) cMornAki++;
-
-            // หมวด DRPs
-            let hasNonComp = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('ลืมกินยา') || l.Detail_Note.includes('ปรับเพิ่ม') || l.Detail_Note.includes('ปรับลด') || l.Detail_Note.includes('ผิดขนาด')));
-            let hasDrugFood = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('ก่อนอาหารน้อยกว่า 30 นาที') || l.Detail_Note.includes('อาหารโปรตีนสูง')));
-            let hasAdr = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('หน้ามืด') || l.Detail_Note.includes('หกล้ม') || l.Detail_Note.includes('คลื่นไส้') || l.Detail_Note.includes('ภาพหลอน') || l.Detail_Note.includes('นอนไม่หลับ') || l.Detail_Note.includes('ท้องผูก') || l.Detail_Note.includes('ง่วงซึม') || l.Detail_Note.includes('ปัสสาวะ') || l.Detail_Note.includes('น้ำลายไหล') || l.Detail_Note.includes('กลืนลำบาก') || l.Detail_Note.includes('วิงเวียน')));
-            
-            if(hasNonComp || hasDrugFood || hasAdr) cDrpAny++;
-            if(hasNonComp) cNonComp++; if(hasDrugFood) cDrugFood++; if(hasAdr) cAdr++;
-        });
+        <h6 class="text-danger mt-4">5. ภาวะแทรกซ้อนด้านการเคลื่อนไหว (Motor Complications)</h6>
+        <div class="row">
+        <div class="col-md-6">
+            <div class="form-check mb-2">
+                <input class="form-check-input adr-check" type="checkbox" value="Wearing-off (ยาหมดฤทธิ์ก่อนกำหนด)" data-suggest="พบ Wearing-off: พิจารณาเพิ่มยา COMT inhibitor, MAO-B inhibitor หรือลดระยะห่างมื้อยา Levodopa (Fractionation)" id="mc1">
+                <label class="form-check-label" for="mc1"><b>Wearing-off</b><br><small class="text-muted">(อาการยาหมดฤทธิ์ก่อนถึงยามื้อถัดไป)</small></label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input adr-check" type="checkbox" value="Delayed ON (ยาออกฤทธิ์ช้า)" data-suggest="พบ Delayed ON: แนะนำเคี้ยว/บดยาก่อนกลืน ดื่มน้ำตามมากๆ ทานขณะท้องว่าง หรือเปลี่ยนเป็นยา Dispersible" id="mc2">
+                <label class="form-check-label" for="mc2"><b>Delayed ON</b><br><small class="text-muted">(ยาออกฤทธิ์ช้ากว่าปกติ รอนานกว่ายาจะออกฤทธิ์)</small></label>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="form-check mb-2">
+                <input class="form-check-input adr-check" type="checkbox" value="Morning Akinesia (แข็งเกร็งตอนเช้า)" data-suggest="พบ Morning Akinesia: พิจารณาให้ยา Levodopa ชนิดออกฤทธิ์เนิ่น (CR) ก่อนนอน หรือเพิ่ม Dopamine Agonist" id="mc3">
+                <label class="form-check-label" for="mc3"><b>Morning Akinesia</b><br><small class="text-muted">(ตื่นมามีอาการแข็งเกร็ง/ช้า ก่อนกินยามื้อแรก)</small></label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input adr-check" type="checkbox" value="Dyskinesia (ภาวะยุกยิก)" data-suggest="พบ Dyskinesia: พิจารณาลดขนาดยา Levodopa ต่อมื้อ ควบคู่กับเพิ่มความถี่ หรือพิจารณาเพิ่มยา Amantadine" id="mc4">
+                <label class="form-check-label" for="mc4"><b>Dyskinesia</b><br><small class="text-muted">(เคลื่อนไหวผิดปกติควบคุมไม่ได้ มักเกิดช่วงยาออกฤทธิ์เต็มที่)</small></label>
+            </div>
+        </div>
+        </div>
         
-        let getPct = (count) => totalPatients ? ((count/totalPatients)*100).toFixed(1) : 0;
+        <hr class="mt-4"><div class="row align-items-center bg-light p-2 rounded border"><div class="col-md-5"><label class="form-label text-primary fw-bold mb-0">หมวดหมู่ปัญหาด้านยา (DRPs):</label></div><div class="col-md-7"><select id="drpClass" class="form-select border-primary"><option value="ไม่พบปัญหาด้านยา (None)">ไม่พบปัญหาด้านยา (None)</option><option value="Need for additional drug therapy (ND)">Need for additional drug therapy (ND)</option><option value="Adverse drug reaction (ADR)">Adverse drug reaction (ADR)</option><option value="Non-Compliance (NC)">Non-Compliance (NC)</option><option value="Drug interaction (DI)">Drug interaction (DI) (รวม Food-Interaction)</option><option value="พบหลายปัญหา (Multiple DRPs)">พบหลายปัญหา (Multiple DRPs)</option></select></div></div><div class="mt-3"><label class="form-label fw-bold">บันทึกเพิ่มเติมของเภสัชกร:</label><textarea id="adrNote" class="form-control" rows="2" placeholder="เช่น ผู้ป่วยแจ้งทานยา... แล้วมีอาการ..."></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button><button type="button" class="btn btn-danger" onclick="saveADR()">💾 บันทึกข้อมูลแบบคัดกรอง</button></div></div></div></div>
 
-        let resultTxt = `รายงานตัวชี้วัดผลการปฏิบัติงาน คลินิกพาร์กินสัน\n`;
-        resultTxt += `ช่วงเวลา: ${startInput} ถึง ${endInput}\n\n`;
-        resultTxt += `1. ภาระงานคลินิกพาร์กินสัน\n`;
-        resultTxt += `  - ผู้ป่วยมารับบริการตามนัดทั้งหมด: ${totalPatients} ราย\n\n`;
-        
-        resultTxt += `2. ปัญหาความผิดปกติทางการเคลื่อนไหว (Motor Complications)\n`;
-        resultTxt += `  - พบผู้ป่วยที่มีอาการรวม: ${cMotorAny} ราย (${getPct(cMotorAny)}%)\n`;
-        resultTxt += `      > Wearing-off: ${cOff} ราย\n`;
-        resultTxt += `      > Dyskinesia: ${cDys} ราย\n`;
-        resultTxt += `      > Delayed ON: ${cDelOn} ราย\n`;
-        resultTxt += `      > Morning Akinesia: ${cMornAki} ราย\n\n`;
+<div class="modal fade no-print" id="kpiModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">📊 รายงานตัวชี้วัด (KPI Report)</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row mb-3"><div class="col-md-6"><label>ตั้งแต่วันที่:</label><input type="date" id="kpiStart" class="form-control"></div><div class="col-md-6"><label>ถึงวันที่:</label><input type="date" id="kpiEnd" class="form-control"></div></div>
+<div class="row mb-3"><div class="col-md-8"><button class="btn btn-success w-100" onclick="fetchKPIReport()">ดึงข้อมูลรายงาน</button></div><div class="col-md-4"><button class="btn btn-info w-100" onclick="exportKPIExcel()">📥 ส่งออก Excel</button></div></div>
+<textarea id="kpiResult" class="form-control bg-light" rows="15" readonly placeholder="ผลการประมวลผลจะแสดงที่นี่..."></textarea></div></div></div></div>
 
-        resultTxt += `3. ปัญหาด้านยา (Drug-Related Problems: DRPs)\n`;
-        resultTxt += `  - พบผู้ป่วยที่มีปัญหาด้านยารวม: ${cDrpAny} ราย (${getPct(cDrpAny)}%)\n`;
-        resultTxt += `      > ความร่วมมือในการใช้ยา (Non-compliance): ${cNonComp} ราย\n`;
-        resultTxt += `      > อันตรกิริยาระหว่างยาและอาหาร (Drug-Food Int.): ${cDrugFood} ราย\n`;
-        resultTxt += `      > อาการข้างเคียงจากยา (ADRs): ${cAdr} ราย\n`;
-
-        document.getElementById('kpiResult').value = resultTxt;
-    } catch(e) { alert("ดึงข้อมูลล้มเหลว: " + e); }
-}
-
-// 🌟 ฟังก์ชันแปลง Text Area เป็นไฟล์ Excel
-function exportKPIExcel() {
-    let text = document.getElementById('kpiResult').value;
-    if(!text || text.includes('กำลังดึงข้อมูล')) return alert("กรุณาดึงข้อมูลให้เสร็จก่อนส่งออก");
-
-    // สร้างโครงสร้างตาราง HTML ง่ายๆ เพื่อให้ Excel อ่านได้สวยงาม
-    let rows = text.split('\n').map(r => `<tr><td>${r}</td></tr>`).join('');
-    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body><table>${rows}</table></body></html>`;
-
-    let blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-    let url = URL.createObjectURL(blob);
-    let a = document.createElement("a");
-    a.href = url;
-    a.download = `KPI_Parkinson_${new Date().toISOString().slice(0,10)}.xls`;
-    a.click();
-}
-
-// ฟังก์ชันเดิมต่างๆ ไม่มีการปรับแก้ให้หายไป
-function saveADR() {
-    let cb = document.querySelectorAll('.adr-check:checked');
-    savedADRData.symptoms = []; 
-    savedADRData.advices = [];
-    let reportDetails = [];
-    
-    cb.forEach(c => { 
-        savedADRData.symptoms.push(c.value); 
-        reportDetails.push(c.value);
-        if(c.dataset.suggest) savedADRData.advices.push(c.dataset.suggest); 
-    });
-    
-    savedADRData.drpClass = document.getElementById('drpClass').value;
-    savedADRData.note = document.getElementById('adrNote').value;
-    
-    if(savedADRData.drpClass) reportDetails.push("Class: " + savedADRData.drpClass);
-    if(savedADRData.note) reportDetails.push("Note: " + savedADRData.note);
-
-    bootstrap.Modal.getInstance(document.getElementById('adrModal')).hide();
-
-    if(reportDetails.length > 0) {
-        fetch(API_URL, { 
-            method: 'POST', 
-            body: JSON.stringify({ action: 'addLog', PD_No: currentPatientId, Date: new Date().toLocaleDateString('th-TH'), Event_Type: 'DRPs/ADR Check', Start_Time: '-', End_Time: '-', Reporter: 'Pharmacist', Detail_Note: reportDetails.join(' | ') }) 
-        }).then(res => res.json()).then(data => alert('บันทึกข้อมูลคัดกรองลงฐานข้อมูลแล้ว (Log ID: ' + data.logId + ')')).catch(err => alert('เกิดข้อผิดพลาดในการบันทึก ADR'));
-    } else {
-        alert('บันทึกข้อมูลคัดกรองแล้ว (ไม่ได้ส่งฐานข้อมูลเนื่องจากไม่มีข้อมูล)');
-    }
-}
-
-function analyzeRegimen() {
-    let items = timelineItems.get();
-    let hasOff = items.some(i => i.group === 'symptoms' && i.content === 'OFF-Time');
-    let hasDys = items.some(i => i.group === 'symptoms' && i.content === 'Dyskinesia');
-    let titleStr = "", bestStr = ""; let optList = [];
-
-    if (hasOff && hasDys) {
-        titleStr = "⚠️ พบทั้ง OFF-Time และ Dyskinesia"; bestStr = "พิจารณา 'Fractionation': ลดขนาดยา L-dopa ต่อมื้อลง และเพิ่มความถี่มื้อยา";
-        optList.push("เพิ่มยา Dopamine Agonist (เช่น Requip PD) หรือ Amantadine เพื่อลด Dyskinesia"); optList.push("พิจารณาการใช้ยาในกลุ่ม COMT Inhibitor อย่างระมัดระวัง");
-    } else if (hasOff) {
-        titleStr = "📉 พบภาวะยาหมดฤทธิ์ก่อนกำหนด (Wearing-Off)"; bestStr = "พิจารณาเพิ่มยา COMT Inhibitor (Comtan) หรือ MAO-B Inhibitor (Rasagiline)";
-        optList.push("ขยับมื้อยา L-dopa ให้ถี่ขึ้น (Shorten Interval)"); optList.push("เปลี่ยนรูปแบบยาเป็น Controlled Release (CR) ในมื้อก่อนนอน");
-    } else if (hasDys) {
-        titleStr = "📈 พบภาวะยุกยิก (Peak-Dose Dyskinesia)"; bestStr = "ลดขนาดยา L-dopa ในมื้อที่มีอาการลง";
-        optList.push("พิจารณาหยุดยา COMT Inhibitor หรือ MAO-B Inhibitor ชั่วคราว"); optList.push("เพิ่มยา Amantadine เพื่อคุมอาการยุกยิก");
-    } else {
-        titleStr = "✅ ไม่พบ Motor Complications บนกราฟ"; bestStr = "คงแผนการรักษาเดิม (Maintain Current Therapy)";
-        optList.push("ติดตามอาการ Non-Motor Symptoms (NMS) เพิ่มเติม");
-    }
-    document.getElementById('aiTitle').innerText = titleStr; document.getElementById('aiBest').innerHTML = bestStr;
-    let ul = document.getElementById('aiOptions'); ul.innerHTML = "";
-    optList.forEach(opt => { let li = document.createElement('li'); li.innerHTML = opt; ul.appendChild(li); });
-    document.getElementById('aiRecommendationArea').classList.remove('d-none');
-}
-
-function addSimulatedMed() { const d=document, i=d.getElementById('simDrug').value, o=d.getElementById('simDose').value, t=d.getElementById('simTime').value; if(!t)return; const inf=drugMaster.find(x=>x.id===i); const td=new Date().toISOString().split('T')[0]; const s=new Date(td+'T'+t+':00').getTime()+(inf.onset*60000); const e=s+(inf.duration*3600000); const mid=new Date(td+'T23:59:59').getTime(); if(!timelineGroups.get(i)) timelineGroups.add({id:i, content:inf.name, order:1}); let sub=i; let commonData = {id:i, Trade_Name:inf.name, Dose:o, onset:inf.onset, Time_Take:t, isOriginal:true}; if(e>mid) { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(mid), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); timelineItems.add({id:`M_W_${Math.random()}`, group:i, content:'(ต่อ)', start:new Date(td+'T00:00:00'), end:new Date(new Date(td+'T00:00:00').getTime()+(e-mid)), className:getDrugClass(inf.type), subgroup:sub, style:'opacity:0.7;border-style:dashed;', _drugData:{id:i, isWrapped:true}}); } else { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(e), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); } }
-function addManualSymptom() { 
-    let type = document.getElementById('symType').value; let startStr = document.getElementById('symStart').value; let endStr = document.getElementById('symEnd').value;
-    if(!startStr || !endStr) return alert("กรุณาระบุเวลาให้ครบ");
-    let payload = { action: 'addLog', PD_No: currentPatientId, Date: new Date().toLocaleDateString('th-TH'), Event_Type: type, Start_Time: startStr, End_Time: endStr, Reporter: 'Pharmacist', Detail_Note: "Manual Input" };
-    fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(res => res.json()).then(data => { if(data.status === 'success') { let todayStr = new Date().toISOString().split('T')[0]; timelineItems.add({ id: data.logId || `L_${Math.random()}`, group: 'symptoms', content: type, start: new Date(`${todayStr}T${startStr}:00`), end: new Date(`${todayStr}T${endStr}:00`), className: type === 'OFF-Time' ? 'log-off' : 'log-dyskinesia', editable: { remove: true } }); document.getElementById('symStart').value = ""; document.getElementById('symEnd').value = ""; } else { alert("บันทึกล้มเหลว: " + data.message); } }).catch(err => alert("เกิดข้อผิดพลาดในการบันทึกอาการลงฐานข้อมูล"));
-}
-function archiveOldLogs() { if(confirm("ล้างกราฟ?")) { fetch(API_URL, {method:'POST', body:JSON.stringify({action:'archiveLogs', PD_No:currentPatientId})}).then(()=>loadPatientData()); } }
-function saveMedsToDB() { if(confirm("บันทึกยา?")) { let m=[]; timelineItems.get().forEach(i=>{ if(i.group!=='symptoms' && i._drugData?.isOriginal) m.push({Drug_ID:i._drugData.id, Dose:i._drugData.Dose, Time_Take:i._drugData.Time_Take||"08:00"}); }); fetch(API_URL, {method:'POST', body:JSON.stringify({action:'updatePatientMeds', PD_No:currentPatientId, meds:m})}).then(()=>alert("บันทึกแล้ว")); } }
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script type="text/javascript" src="https://unpkg.com/vis-timeline@7.7.3/standalone/umd/vis-timeline-graph2d.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
