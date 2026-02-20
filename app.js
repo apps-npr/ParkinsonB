@@ -7,14 +7,17 @@ let timelineItems;
 let timelineGroups; 
 let currentPatientId = "";
 let savedADRData = { symptoms: [], advices: [], note: "", drpClass: "ไม่พบปัญหาด้านยา (None)" };
+let originalMedications = []; // 🌟 ตัวแปรใหม่สำหรับเก็บยาเดิม เพื่อเอาไว้คำนวณเปรียบเทียบ LEDD
 
 document.addEventListener('DOMContentLoaded', () => {
+    // โหลดฐานข้อมูลยา
     fetch('./drugs.json').then(r => r.json()).then(d => { 
         drugMaster = d; 
         const s=document.getElementById('simDrug'); 
         d.forEach(x=>s.add(new Option(x.name,x.id))); 
     }).catch(e=>alert("โหลดฐานข้อมูลยาล้มเหลว"));
 
+    // ตัวช่วยพิมพ์เวลา (Smart Time Input) พิมพ์ 0800 เป็น 08:00 อัตโนมัติ
     document.querySelectorAll('.time-input').forEach(inp => {
         inp.addEventListener('input', function(e) {
             let v = this.value.replace(/[^0-9]/g, '');
@@ -25,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         inp.addEventListener('blur', function() {
             let v = this.value.replace(/[^0-9]/g, '');
-            if(v.length === 0) return; 
+            if(v.length === 0) return; // อนุญาตให้เว้นว่างได้ (สำหรับมื้ออาหาร)
             if(v.length === 3) v = '0' + v; 
             if(v.length === 4) {
                 this.value = v.substring(0, 2) + ':' + v.substring(2, 4);
@@ -34,10 +37,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// ฟังก์ชันโหลดข้อมูลผู้ป่วยจากฐานข้อมูล
 async function loadPatientData() {
     const q = document.getElementById('pdInput').value.trim();
     if(!q) return alert('กรอก HN หรือ PD No.');
     
+    // รีเซ็ตข้อมูลเดิมก่อนโหลดใหม่
     savedADRData = { symptoms: [], advices: [], note: "", drpClass: "ไม่พบปัญหาด้านยา (None)" };
     document.querySelectorAll('.adr-check').forEach(cb => cb.checked = false);
     if(document.getElementById('drpClass')) document.getElementById('drpClass').value = "ไม่พบปัญหาด้านยา (None)";
@@ -56,18 +61,28 @@ async function loadPatientData() {
             document.getElementById('printPatientNameHn1').innerText = hTxt;
             document.getElementById('printPatientNameHn2').innerText = hTxt;
 
+            // ดึงเวลามื้ออาหารมาแสดงในกล่อง
             if(data.data.patient.Meal_Break) document.getElementById('mealBreak').value = data.data.patient.Meal_Break;
             if(data.data.patient.Meal_Lunch) document.getElementById('mealLunch').value = data.data.patient.Meal_Lunch;
             if(data.data.patient.Meal_Dinner) document.getElementById('mealDinner').value = data.data.patient.Meal_Dinner;
             
+            // 🌟 เก็บรายการยาเริ่มต้นไว้คำนวณ LEDD
+            originalMedications = data.data.medications; 
+
             document.getElementById('patientInfoCard').classList.remove('d-none');
             document.getElementById('simulationPanel').classList.remove('d-none');
             document.getElementById('btnArchive').classList.remove('d-none');
+            
             renderTimeline(data.data.medications, data.data.logs);
-        } else alert(data.message);
-    } catch(e) { alert('เชื่อมต่อล้มเหลว'); }
+        } else {
+            alert(data.message);
+        }
+    } catch(e) { 
+        alert('เชื่อมต่อล้มเหลว โปรดตรวจสอบอินเทอร์เน็ต'); 
+    }
 }
 
+// กำหนดสียา
 function getDrugClass(t) {
     if(!t) return 'med-ldopa-ir';
     if(t.includes('CR')) return 'med-ldopa-cr';
@@ -80,9 +95,12 @@ function getDrugClass(t) {
     return 'med-ldopa-ir';
 }
 
+// สร้างกราฟ Vis.js
 function renderTimeline(meds, logs) {
-    const c = document.getElementById('visualization'); c.innerHTML = "";
-    timelineItems = new vis.DataSet(); timelineGroups = new vis.DataSet();
+    const c = document.getElementById('visualization'); 
+    c.innerHTML = "";
+    timelineItems = new vis.DataSet(); 
+    timelineGroups = new vis.DataSet();
     
     timelineGroups.add({ id: 'spacer', content: '', style: 'height: 50px; background: transparent; border: none;', order: 2 });
     timelineGroups.add({ id: 'symptoms', content: '<b>🚨 อาการ</b>', order: 3 });
@@ -111,7 +129,12 @@ function renderTimeline(meds, logs) {
         let subId = m.Drug_ID; 
 
         let commonData = {
-            id: m.Drug_ID, Trade_Name: name, Dose: m.Dose, onset: onset, Time_Take: timeStr, isOriginal: true 
+            id: m.Drug_ID, 
+            Trade_Name: name, 
+            Dose: m.Dose, 
+            onset: onset, 
+            Time_Take: timeStr, 
+            isOriginal: true 
         };
 
         if(end > mid) {
@@ -131,18 +154,29 @@ function renderTimeline(meds, logs) {
     });
 
     timeline = new vis.Timeline(c, timelineItems, timelineGroups, {
-        start: new Date(`${todayStr}T00:00:00`), end: new Date(`${todayStr}T23:59:59`),
-        stack: true, groupOrder: 'order', margin: { item: 10, axis: 5 },
+        start: new Date(`${todayStr}T00:00:00`), 
+        end: new Date(`${todayStr}T23:59:59`),
+        stack: true, 
+        groupOrder: 'order', 
+        margin: { item: 10, axis: 5 },
         zoomable: false, 
         locale: 'th',
-        showCurrentTime: false, // 🌟 ลบเส้นสีแดง (เวลาปัจจุบัน) ออกแล้ว
+        showCurrentTime: false, // ปิดเส้นสีแดงเวลาปัจจุบัน
         editable: { add: false, updateTime: true, remove: true },
-        onRemove: (item, cb) => { if(confirm("ลบข้อมูล?")) { fetch(API_URL, {method:'POST', body:JSON.stringify({action:'deleteLog', Log_ID:item.id})}); cb(item); } else cb(null); }
+        onRemove: (item, cb) => { 
+            if(confirm("ลบข้อมูล?")) { 
+                fetch(API_URL, {method:'POST', body:JSON.stringify({action:'deleteLog', Log_ID:item.id})}); 
+                cb(item); 
+            } else {
+                cb(null); 
+            }
+        }
     });
 
-    updateMeals();
+    updateMeals(); // วาดเส้นอาหารตอนโหลดเสร็จ
 }
 
+// ระบบจัดการเส้นมื้ออาหารแบบ Dynamic
 function updateMeals() {
     const todayStr = new Date().toISOString().split('T')[0];
     const tb = document.getElementById('mealBreak').value.trim();
@@ -178,6 +212,7 @@ function updateMeals() {
     });
 }
 
+// บันทึก ADR ลงฐานข้อมูล
 function saveADR() {
     let cb = document.querySelectorAll('.adr-check:checked');
     savedADRData.symptoms = []; 
@@ -201,13 +236,25 @@ function saveADR() {
     if(reportDetails.length > 0) {
         fetch(API_URL, { 
             method: 'POST', 
-            body: JSON.stringify({ action: 'addLog', PD_No: currentPatientId, Date: new Date().toLocaleDateString('th-TH'), Event_Type: 'DRPs/ADR Check', Start_Time: '-', End_Time: '-', Reporter: 'Pharmacist', Detail_Note: reportDetails.join(' | ') }) 
-        }).then(res => res.json()).then(data => alert('บันทึกข้อมูลคัดกรองลงฐานข้อมูลแล้ว')).catch(err => alert('เกิดข้อผิดพลาดในการบันทึก ADR'));
+            body: JSON.stringify({ 
+                action: 'addLog', 
+                PD_No: currentPatientId, 
+                Date: new Date().toLocaleDateString('th-TH'), 
+                Event_Type: 'DRPs/ADR Check', 
+                Start_Time: '-', 
+                End_Time: '-', 
+                Reporter: 'Pharmacist', 
+                Detail_Note: reportDetails.join(' | ') 
+            }) 
+        }).then(res => res.json())
+          .then(data => alert('บันทึกข้อมูลคัดกรองลงฐานข้อมูลแล้ว (Log ID: ' + data.logId + ')'))
+          .catch(err => alert('เกิดข้อผิดพลาดในการบันทึก ADR'));
     } else {
         alert('บันทึกข้อมูลคัดกรองแล้ว (ไม่ได้ส่งฐานข้อมูล)');
     }
 }
 
+// ระบบวิเคราะห์ AI
 function analyzeRegimen() {
     let items = timelineItems.get();
     let hasOff = items.some(i => i.group === 'symptoms' && i.content === 'OFF-Time');
@@ -220,7 +267,7 @@ function analyzeRegimen() {
         optList.push("เพิ่มยา Dopamine Agonist (เช่น Requip PD) หรือ Amantadine เพื่อลด Dyskinesia");
         optList.push("พิจารณาการใช้ยาในกลุ่ม COMT Inhibitor อย่างระมัดระวัง");
     } else if (hasOff) {
-        titleStr = "📉 พบภาวะยาหมดฤทธิ์ก่อนกาหนด (Wearing-Off)";
+        titleStr = "📉 พบภาวะยาหมดฤทธิ์ก่อนกำหนด (Wearing-Off)";
         bestStr = "พิจารณาเพิ่มยา COMT Inhibitor (Comtan) หรือ MAO-B Inhibitor (Rasagiline)";
         optList.push("ขยับมื้อยา L-dopa ให้ถี่ขึ้น (Shorten Interval)");
         optList.push("เปลี่ยนรูปแบบยาเป็น Controlled Release (CR) ในมื้อก่อนนอน");
@@ -242,7 +289,46 @@ function analyzeRegimen() {
     document.getElementById('aiRecommendationArea').classList.remove('d-none');
 }
 
-// 🌟 ระบบพิมพ์: แก้ไขให้กราฟบังคับขยายเต็มสัดส่วนก่อนถ่ายรูป
+// 🌟 ระบบคำนวณ Levodopa Equivalent Daily Dose (LEDD)
+function calculateLEDD(medsList) {
+    let totalLdopa = 0;
+
+    medsList.forEach(m => {
+        let name = (m.Trade_Name || m.name || "").toLowerCase();
+        let doseStr = (m.Dose || "").toString().toLowerCase();
+        
+        // แปลงข้อความ dose เป็นตัวคูณ
+        let multiplier = 1;
+        let match = doseStr.match(/([0-9]*\.?[0-9]+)/); 
+        if(match) multiplier = parseFloat(match[1]);
+        if(doseStr.includes('1/2') || doseStr.includes('ครึ่ง')) multiplier = 0.5;
+        if(doseStr.includes('1/4')) multiplier = 0.25;
+
+        // คำนวณเฉพาะกลุ่ม Levodopa ตาม Guidelines
+        if (name.includes('madopar') || name.includes('vopar')) {
+            if (name.includes('125')) totalLdopa += (100 * multiplier);
+            else if (name.includes('250')) totalLdopa += (200 * multiplier);
+            else if (name.includes('hbs')) totalLdopa += (100 * 0.75 * multiplier); 
+            else totalLdopa += (200 * multiplier); 
+        } 
+        else if (name.includes('sinemet') || name.includes('levodopa')) {
+            if (name.includes('250')) totalLdopa += (250 * multiplier);
+            else if (name.includes('125') || name.includes('100')) totalLdopa += (100 * multiplier);
+            else if (name.includes('cr')) totalLdopa += (200 * 0.75 * multiplier); 
+            else totalLdopa += (250 * multiplier); 
+        }
+        else if (name.includes('stalevo')) {
+            if (name.includes('50')) totalLdopa += (50 * 1.33 * multiplier);
+            else if (name.includes('100')) totalLdopa += (100 * 1.33 * multiplier);
+            else if (name.includes('150')) totalLdopa += (150 * 1.33 * multiplier);
+            else if (name.includes('200')) totalLdopa += (200 * 1.33 * multiplier);
+        }
+    });
+
+    return { ldopa: Math.round(totalLdopa) };
+}
+
+// 🌟 ระบบพิมพ์ภาพกราฟ (บังคับขยายพื้นที่ป้องกันกราฟตกขอบ)
 function printSystem() {
     const today = new Date().toISOString().split('T')[0];
     timeline.setWindow(new Date(`${today}T00:00:00`), new Date(`${today}T23:59:59`), { animation: false });
@@ -254,24 +340,26 @@ function printSystem() {
     let originalW = viz.style.width;
     let originalH = viz.style.height;
     
-    // 🌟 บังคับปรับความกว้าง/สูง ของกราฟให้ได้สัดส่วนกว้างพิเศษ เพื่อให้ชิดขอบกระดาษตอน Capture
-    viz.style.width = "1600px"; 
+    // ขยายเพื่อป้องกันพื้นที่ว่างตอน Capture
+    viz.style.width = "1800px"; 
     viz.style.height = "700px"; 
-    timeline.redraw(); // บังคับให้ vis.js วาดกราฟใหม่ให้เต็มพื้นที่ที่ขยายทันที
+    timeline.redraw();
 
     setTimeout(() => {
         html2canvas(viz, { scale: 2, logging: false }).then(canvas => {
             viz.style.width = originalW;
             viz.style.height = originalH;
-            timeline.redraw(); // คืนค่ากราฟกลับมาขนาดเดิมบนหน้าจอคอม
+            timeline.redraw();
             document.getElementById('graph-snapshot').src = canvas.toDataURL("image/png");
         });
-    }, 800); // เผื่อเวลาให้กราฟขยายเสร็จ
+    }, 800); 
 }
 
+// สร้างเนื้อหารายงานหน้า 2
 function generateReport() {
     let all = timelineItems.get();
     let meds = {}; 
+    let newMedsList = []; // เก็บยาแผนใหม่เพื่อคำนวณ LEDD
     let offMs = 0, dysMs = 0;
     
     all.forEach(i => {
@@ -279,13 +367,24 @@ function generateReport() {
             let time = i._drugData.Time_Take || "00:00";
             if(!meds[i._drugData.Trade_Name]) meds[i._drugData.Trade_Name] = [];
             meds[i._drugData.Trade_Name].push(`<b>${i._drugData.Dose}</b> (${time})`);
+            
+            newMedsList.push({Trade_Name: i._drugData.Trade_Name, Dose: i._drugData.Dose});
         }
         if(i.content === 'OFF-Time') offMs += (i.end - i.start);
         if(i.content === 'Dyskinesia') dysMs += (i.end - i.start);
     });
 
+    // 🌟 คำนวณและสร้างข้อความ LEDD เปรียบเทียบ
+    let oldDose = calculateLEDD(originalMedications).ldopa;
+    let newDose = calculateLEDD(newMedsList).ldopa;
+    let doseChangeTxt = "";
+    if(newDose > oldDose) doseChangeTxt = `<span class="text-danger fw-bold">(เพิ่มขึ้น +${newDose - oldDose} mg)</span>`;
+    else if(newDose < oldDose) doseChangeTxt = `<span class="text-success fw-bold">(ลดลง -${oldDose - newDose} mg)</span>`;
+    else doseChangeTxt = `<span class="text-secondary">(เท่าเดิม)</span>`;
+
     let html = `<div class="print-row"><div class="print-col-left">`;
     
+    // หมวดอาการ (Motor Fluctuations)
     if(offMs > 0 || dysMs > 0) {
         let offH = (offMs/3600000).toFixed(1);
         let dysH = (dysMs/3600000).toFixed(1);
@@ -300,29 +399,39 @@ function generateReport() {
         html += `</ul>`;
     }
 
+    // หมวดตารางยา
     html += `<div class="report-header text-success">📌 แผนการจัดตารางยาใหม่:</div><ul>`;
     for(let k in meds) html += `<li><strong>${k}</strong>: ${meds[k].sort().join(', ')}</li>`;
     html += `</ul>`;
 
-    html += `<div class="report-header text-danger">⚠️ DRPs [${savedADRData.drpClass}]:</div>`;
+    // 🌟 กล่องแสดง LEDD ที่เพิ่มเข้ามา
+    html += `<div class="p-2 mt-2 bg-light border rounded" style="font-size:11px;">
+        <strong>💊 Total Levodopa Dose:</strong><br>
+        - แผนยาเดิม (จากประวัติ): ${oldDose} mg/วัน<br>
+        - แผนยาใหม่ (บนกราฟ): <b>${newDose} mg/วัน</b> ${doseChangeTxt}
+    </div>`;
+
+    // หมวด DRPs
+    html += `<div class="report-header text-danger mt-2">⚠️ DRPs [${savedADRData.drpClass}]:</div>`;
     if(savedADRData.symptoms.length > 0) {
         html += `<ul>${savedADRData.symptoms.map(s => `<li>[X] ${s}</li>`).join('')}</ul>`;
-    } else html += `<p>- ไม่พบปัญหา DRPs</p>`;
+    } else {
+        html += `<p>- ไม่พบปัญหา DRPs</p>`;
+    }
     html += `</div>`;
 
+    // คอลัมน์ขวา (ข้อเสนอแนะ)
     html += `<div class="print-col-right">`;
-    
     let interventions = [];
     let hasFoodInt = savedADRData.symptoms.some(s => s.includes("ทานยาก่อนอาหาร"));
-    let hasDoseRed = savedADRData.symptoms.some(s => s.includes("ปรับลดขนาดยา"));
     let hasNgTube = savedADRData.symptoms.some(s => s.includes("บริหารยาทางสายยาง"));
-    let hasPostural = savedADRData.symptoms.some(s => s.includes("ทรงตัวลาบาก"));
+    let hasPostural = savedADRData.symptoms.some(s => s.includes("ทรงตัวลำบาก"));
     
     if (hasNgTube && Object.keys(meds).some(m => m.includes("HBS") || m.includes("PD 24h"))) {
         interventions.push(`🚨 <b>[CRITICAL]</b> ห้ามบดยา CR (HBS, PD 24h) ในผู้ป่วย NG Tube เปลี่ยนเป็น IR/Dispersible`);
     }
-    if (hasPostural) interventions.push(`🚨 <b>[Warning]</b> ทรงตัวลาบากช่วง OFF-time เสี่ยงหกล้มสูง ควรปรับยา`);
-    if (offMs > 0 && hasFoodInt) interventions.push(`🚨 <b>[Warning]</b> OFF-time อาจเกิดจาก Food-Interaction เน้นย้าเวลายา`);
+    if (hasPostural) interventions.push(`🚨 <b>[Warning]</b> ทรงตัวลำบากช่วง OFF-time เสี่ยงหกล้มสูง ควรปรับยา`);
+    if (offMs > 0 && hasFoodInt) interventions.push(`🚨 <b>[Warning]</b> OFF-time อาจเกิดจาก Food-Interaction เน้นย้ำเวลายา`);
     
     [...new Set(savedADRData.advices)].forEach(adv => interventions.push(adv));
 
@@ -332,13 +441,15 @@ function generateReport() {
         html += `</ul>`;
     }
 
-    if(savedADRData.note) html += `<div class="mt-2 p-1 bg-light border rounded"><strong>📝 บันทึกเพิ่มเติม:</strong><br>${savedADRData.note}</div>`;
+    if(savedADRData.note) {
+        html += `<div class="mt-2 p-1 bg-light border rounded"><strong>📝 บันทึกเพิ่มเติม:</strong><br>${savedADRData.note}</div>`;
+    }
     
     html += `<div class="signature-box">ลงชื่อเภสัชกรผู้ประเมิน</div></div></div>`;
-
     document.getElementById('reportContent').innerHTML = html;
 }
 
+// ตัวแปลงวันที่ให้เทียบค่าได้ถูกต้อง (KPI)
 function normalizeDateStr(dStr) {
     if(!dStr) return "1970-01-01";
     if(dStr.includes("T")) return dStr.split("T")[0]; 
@@ -368,6 +479,7 @@ function getTimestampForKPI(dateStr) {
     return 0;
 }
 
+// ดึง KPI ตามฟอร์มโรงพยาบาล
 async function fetchKPIReport() {
     let startInput = document.getElementById('kpiStart').value;
     let endInput = document.getElementById('kpiEnd').value;
@@ -377,7 +489,7 @@ async function fetchKPIReport() {
     let endTs = new Date(endInput).getTime() + 86399000; 
 
     try {
-        document.getElementById('kpiResult').value = "⏳ กาลังดึงข้อมูลและประมวลผล...";
+        document.getElementById('kpiResult').value = "⏳ กำลังดึงข้อมูลและประมวลผล...";
         const res = await fetch(`${API_URL}?action=getKPIReport`);
         const data = await res.json();
         
@@ -404,7 +516,7 @@ async function fetchKPIReport() {
 
             let hasNonComp = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('ลืมกินยา') || l.Detail_Note.includes('ปรับเพิ่ม') || l.Detail_Note.includes('ปรับลด') || l.Detail_Note.includes('ผิดขนาด')));
             let hasDrugFood = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('ก่อนอาหารน้อยกว่า 30 นาที') || l.Detail_Note.includes('อาหารโปรตีนสูง')));
-            let hasAdr = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('หน้ามืด') || l.Detail_Note.includes('หกล้ม') || l.Detail_Note.includes('คลื่นไส้') || l.Detail_Note.includes('ภาพหลอน') || l.Detail_Note.includes('นอนไม่หลับ') || l.Detail_Note.includes('ท้องผูก') || l.Detail_Note.includes('ง่วงซึม') || l.Detail_Note.includes('ปัสสาวะ') || l.Detail_Note.includes('น้าลายไหล') || l.Detail_Note.includes('กลืนลาบาก') || l.Detail_Note.includes('วิงเวียน')));
+            let hasAdr = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('หน้ามืด') || l.Detail_Note.includes('หกล้ม') || l.Detail_Note.includes('คลื่นไส้') || l.Detail_Note.includes('ภาพหลอน') || l.Detail_Note.includes('นอนไม่หลับ') || l.Detail_Note.includes('ท้องผูก') || l.Detail_Note.includes('ง่วงซึม') || l.Detail_Note.includes('ปัสสาวะ') || l.Detail_Note.includes('น้ำลายไหล') || l.Detail_Note.includes('กลืนลำบาก') || l.Detail_Note.includes('วิงเวียน')));
             
             if(hasNonComp || hasDrugFood || hasAdr) cDrpAny++;
             if(hasNonComp) cNonComp++; if(hasDrugFood) cDrugFood++; if(hasAdr) cAdr++;
@@ -431,12 +543,15 @@ async function fetchKPIReport() {
         resultTxt += `      > อาการข้างเคียงจากยา (ADRs): ${cAdr} ราย\n`;
 
         document.getElementById('kpiResult').value = resultTxt;
-    } catch(e) { alert("ดึงข้อมูลล้มเหลว โปรดตรวจสอบการเชื่อมต่อ"); }
+    } catch(e) { 
+        alert("ดึงข้อมูลล้มเหลว โปรดตรวจสอบการเชื่อมต่อ"); 
+    }
 }
 
+// ส่งออก Excel
 function exportKPIExcel() {
     let text = document.getElementById('kpiResult').value;
-    if(!text || text.includes('กาลังดึงข้อมูล')) return alert("กรุณาดึงข้อมูลให้เสร็จก่อนส่งออก");
+    if(!text || text.includes('กำลังดึงข้อมูล')) return alert("กรุณาดึงข้อมูลให้เสร็จก่อนส่งออก");
 
     let rows = text.split('\n').map(r => `<tr><td style="font-family: 'Sarabun', sans-serif;">${r}</td></tr>`).join('');
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body><table>${rows}</table></body></html>`;
@@ -449,7 +564,63 @@ function exportKPIExcel() {
     a.click();
 }
 
-function addSimulatedMed() { const d=document, i=d.getElementById('simDrug').value, o=d.getElementById('simDose').value, t=d.getElementById('simTime').value; if(!t)return; const inf=drugMaster.find(x=>x.id===i); const td=new Date().toISOString().split('T')[0]; const s=new Date(td+'T'+t+':00').getTime()+(inf.onset*60000); const e=s+(inf.duration*3600000); const mid=new Date(td+'T23:59:59').getTime(); if(!timelineGroups.get(i)) timelineGroups.add({id:i, content:inf.name, order:1}); let sub=i; let commonData = {id:i, Trade_Name:inf.name, Dose:o, onset:inf.onset, Time_Take:t, isOriginal:true}; if(e>mid) { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(mid), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); timelineItems.add({id:`M_W_${Math.random()}`, group:i, content:'(ต่อ)', start:new Date(td+'T00:00:00'), end:new Date(new Date(td+'T00:00:00').getTime()+(e-mid)), className:getDrugClass(inf.type), subgroup:sub, style:'opacity:0.7;border-style:dashed;', _drugData:{id:i, isWrapped:true}}); } else { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(e), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); } }
-function addManualSymptom() { let type = document.getElementById('symType').value; let startStr = document.getElementById('symStart').value; let endStr = document.getElementById('symEnd').value; if(!startStr || !endStr) return alert("กรุณาระบุเวลาให้ครบ"); let payload = { action: 'addLog', PD_No: currentPatientId, Date: new Date().toLocaleDateString('th-TH'), Event_Type: type, Start_Time: startStr, End_Time: endStr, Reporter: 'Pharmacist', Detail_Note: "Manual Input" }; fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(res => res.json()).then(data => { if(data.status === 'success') { let todayStr = new Date().toISOString().split('T')[0]; timelineItems.add({ id: data.logId || `L_${Math.random()}`, group: 'symptoms', content: type, start: new Date(`${todayStr}T${startStr}:00`), end: new Date(`${todayStr}T${endStr}:00`), className: type === 'OFF-Time' ? 'log-off' : 'log-dyskinesia', editable: { remove: true } }); document.getElementById('symStart').value = ""; document.getElementById('symEnd').value = ""; } else { alert("บันทึกล้มเหลว: " + data.message); } }).catch(err => alert("เกิดข้อผิดพลาดในการบันทึกอาการ")); }
-function archiveOldLogs() { if(confirm("ล้างกราฟ?")) { fetch(API_URL, {method:'POST', body:JSON.stringify({action:'archiveLogs', PD_No:currentPatientId})}).then(()=>loadPatientData()); } }
-function saveMedsToDB() { if(confirm("บันทึกยา?")) { let m=[]; timelineItems.get().forEach(i=>{ if(i.group!=='symptoms' && i._drugData?.isOriginal) m.push({Drug_ID:i._drugData.id, Dose:i._drugData.Dose, Time_Take:i._drugData.Time_Take||"08:00"}); }); fetch(API_URL, {method:'POST', body:JSON.stringify({action:'updatePatientMeds', PD_No:currentPatientId, meds:m})}).then(()=>alert("บันทึกแล้ว")); } }
+// จัดการเพิ่มยาในกราฟ
+function addSimulatedMed() { 
+    const d=document, i=d.getElementById('simDrug').value, o=d.getElementById('simDose').value, t=d.getElementById('simTime').value; 
+    if(!t)return; 
+    const inf=drugMaster.find(x=>x.id===i); 
+    const td=new Date().toISOString().split('T')[0]; 
+    const s=new Date(td+'T'+t+':00').getTime()+(inf.onset*60000); 
+    const e=s+(inf.duration*3600000); 
+    const mid=new Date(td+'T23:59:59').getTime(); 
+    
+    if(!timelineGroups.get(i)) timelineGroups.add({id:i, content:inf.name, order:1}); 
+    let sub=i; 
+    let commonData = {id:i, Trade_Name:inf.name, Dose:o, onset:inf.onset, Time_Take:t, isOriginal:true}; 
+    
+    if(e>mid) { 
+        timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(mid), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); 
+        timelineItems.add({id:`M_W_${Math.random()}`, group:i, content:'(ต่อ)', start:new Date(td+'T00:00:00'), end:new Date(new Date(td+'T00:00:00').getTime()+(e-mid)), className:getDrugClass(inf.type), subgroup:sub, style:'opacity:0.7;border-style:dashed;', _drugData:{id:i, isWrapped:true}}); 
+    } else { 
+        timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(e), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); 
+    } 
+}
+
+// เพิ่มอาการบันทึกลง DB
+function addManualSymptom() { 
+    let type = document.getElementById('symType').value; 
+    let startStr = document.getElementById('symStart').value; 
+    let endStr = document.getElementById('symEnd').value; 
+    if(!startStr || !endStr) return alert("กรุณาระบุเวลาให้ครบ"); 
+    
+    let payload = { action: 'addLog', PD_No: currentPatientId, Date: new Date().toLocaleDateString('th-TH'), Event_Type: type, Start_Time: startStr, End_Time: endStr, Reporter: 'Pharmacist', Detail_Note: "Manual Input" }; 
+    
+    fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+    .then(res => res.json())
+    .then(data => { 
+        if(data.status === 'success') { 
+            let todayStr = new Date().toISOString().split('T')[0]; 
+            timelineItems.add({ id: data.logId || `L_${Math.random()}`, group: 'symptoms', content: type, start: new Date(`${todayStr}T${startStr}:00`), end: new Date(`${todayStr}T${endStr}:00`), className: type === 'OFF-Time' ? 'log-off' : 'log-dyskinesia', editable: { remove: true } }); 
+            document.getElementById('symStart').value = ""; 
+            document.getElementById('symEnd').value = ""; 
+        } else { 
+            alert("บันทึกล้มเหลว: " + data.message); 
+        } 
+    }).catch(err => alert("เกิดข้อผิดพลาดในการบันทึกอาการ")); 
+}
+
+function archiveOldLogs() { 
+    if(confirm("ล้างกราฟ?")) { 
+        fetch(API_URL, {method:'POST', body:JSON.stringify({action:'archiveLogs', PD_No:currentPatientId})}).then(()=>loadPatientData()); 
+    } 
+}
+
+function saveMedsToDB() { 
+    if(confirm("บันทึกยา?")) { 
+        let m=[]; 
+        timelineItems.get().forEach(i=>{ 
+            if(i.group!=='symptoms' && i._drugData?.isOriginal) m.push({Drug_ID:i._drugData.id, Dose:i._drugData.Dose, Time_Take:i._drugData.Time_Take||"08:00"}); 
+        }); 
+        fetch(API_URL, {method:'POST', body:JSON.stringify({action:'updatePatientMeds', PD_No:currentPatientId, meds:m})}).then(()=>alert("บันทึกแล้ว")); 
+    } 
+}
