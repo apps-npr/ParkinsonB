@@ -54,8 +54,9 @@
             #page1-wrapper { height: 135mm; width: 100%; position: relative; page-break-after: always; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
             #viz-container { display: none !important; }
             
-            #graph-snapshot-container { display: block !important; width: 100%; text-align: left; margin-top: 5px; }
-            #graph-snapshot { width: 100%; height: auto; max-height: 125mm; object-fit: contain; object-position: left top; border: 1px solid #000; }
+            #graph-snapshot-container { display: block !important; width: 100%; text-align: center; margin-top: 5px; }
+            /* 🌟 บังคับรูปกราฟให้กาง 100% ชิดขอบซ้ายขวา */
+            #graph-snapshot { width: 100%; height: auto; max-height: 125mm; object-fit: contain; object-position: center top; border: 1px solid #000; }
             .legend-row { display: none !important; }
 
             #reportArea { display: block !important; margin-top: 0 !important; border: none !important; padding: 0 !important; width: 100%; position: relative; }
@@ -218,7 +219,7 @@
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="นอนไม่หลับ (Insomnia)" data-suggest="พิจารณาขยับเวลายามื้อเย็นให้เร็วขึ้น หลีกเลี่ยง MAO-B มื้อเย็น" id="adr4"><label class="form-check-label" for="adr4">นอนไม่หลับ (Insomnia)</label></div>
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ท้องผูกรุนแรง (Constipation)" data-suggest="แนะนาดื่มน้ามากๆ เพิ่มกากใย หรือพิจารณาเพิ่มยาระบาย" id="adr5"><label class="form-check-label" for="adr5">ท้องผูกรุนแรง (Constipation)</label></div>
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ง่วงซึมมากผิดปกติช่วงกลางวัน (EDS)" data-suggest="ระวังผลข้างเคียงจากยา Dopamine Agonist พิจารณาปรับลดยา" id="adr3"><label class="form-check-label" for="adr3">ง่วงซึมมากช่วงกลางวัน (EDS)</label></div>
-            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="น้าลายไหล (Drooling)" data-suggest="พบปัญหาน้าลายไหล: แนะนาให้ผู้ป่วยกลืนน้าลายบ่อยๆ อมลูกอม/หมากฝรั่ง หรือแพทย์อาจพิจารณาปรับยา" id="adr9"><label class="form-check-label" for="adr9">น้าลายไหล (Drooling)</label></div>
+            <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="น้าลายไหล (Drooling)" data-suggest="พบปัญาน้าลายไหล: แนะนาให้ผู้ป่วยกลืนน้าลายบ่อยๆ อมลูกอม/หมากฝรั่ง หรือแพทย์อาจพิจารณาปรับยา" id="adr9"><label class="form-check-label" for="adr9">น้าลายไหล (Drooling)</label></div>
             <div class="form-check"><input class="form-check-input adr-check" type="checkbox" value="ปัสสาวะสีส้ม/แดง" data-suggest="เป็นผลข้างเคียงปกติของยา Entacapone ให้อธิบายผู้ป่วย" id="adr7"><label class="form-check-label" for="adr7">ปัสสาวะสีส้ม/แดง (Entacapone)</label></div>
         </div>
         </div>
