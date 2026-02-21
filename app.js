@@ -527,3 +527,68 @@ function addSimulatedMed() { const d=document, i=d.getElementById('simDrug').val
 function addManualSymptom() { let type = document.getElementById('symType').value; let startStr = document.getElementById('symStart').value; let endStr = document.getElementById('symEnd').value; if(!startStr || !endStr) return alert("กรุณาระบุเวลาให้ครบ"); let payload = { action: 'addLog', PD_No: currentPatientId, Date: new Date().toLocaleDateString('th-TH'), Event_Type: type, Start_Time: startStr, End_Time: endStr, Reporter: 'Pharmacist', Detail_Note: "Manual Input" }; fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(res => res.json()).then(data => { if(data.status === 'success') { let todayStr = new Date().toISOString().split('T')[0]; timelineItems.add({ id: data.logId || `L_${Math.random()}`, group: 'symptoms', content: type, start: new Date(`${todayStr}T${startStr}:00`), end: new Date(`${todayStr}T${endStr}:00`), className: type === 'OFF-Time' ? 'log-off' : 'log-dyskinesia', editable: { remove: true } }); document.getElementById('symStart').value = ""; document.getElementById('symEnd').value = ""; } else { alert("บันทึกล้มเหลว: " + data.message); } }).catch(err => alert("เกิดข้อผิดพลาดในการบันทึกอาการ")); }
 function archiveOldLogs() { if(confirm("ล้างกราฟ?")) { fetch(API_URL, {method:'POST', body:JSON.stringify({action:'archiveLogs', PD_No:currentPatientId})}).then(()=>loadPatientData()); } }
 function saveMedsToDB() { if(confirm("บันทึกยา?")) { let m=[]; timelineItems.get().forEach(i=>{ if(i.group!=='symptoms' && i._drugData?.isOriginal) m.push({Drug_ID:i._drugData.id, Dose:i._drugData.Dose, Time_Take:i._drugData.Time_Take||"08:00"}); }); fetch(API_URL, {method:'POST', body:JSON.stringify({action:'updatePatientMeds', PD_No:currentPatientId, meds:m})}).then(()=>alert("บันทึกแล้ว")); } }
+
+// ==========================================
+// 🌟 ระบบลงทะเบียนผู้ป่วยใหม่
+// ==========================================
+
+function showNewPatientModal() {
+    // ล้างค่าเก่าในฟอร์มทิ้งก่อนเปิด
+    document.getElementById('npName').value = "";
+    document.getElementById('npAge').value = "";
+    document.getElementById('npHN').value = "";
+    document.getElementById('npPhone').value = "";
+    
+    // เรียกเปิด Modal ของ Bootstrap
+    let modal = new bootstrap.Modal(document.getElementById('newPatientModal'));
+    modal.show();
+}
+
+async function saveNewPatient() {
+    let name = document.getElementById('npName').value.trim();
+    let age = document.getElementById('npAge').value.trim();
+    let hn = document.getElementById('npHN').value.trim();
+    let phone = document.getElementById('npPhone').value.trim();
+
+    if (!name || !age || !hn || !phone) {
+        return alert("⚠️ กรุณากรอกข้อมูลให้ครบถ้วนทุกช่องครับ");
+    }
+
+    let btn = document.getElementById('btnSavePatient');
+    btn.innerHTML = "⏳ กำลังบันทึก...";
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'createNewPatient',
+                name: name,
+                age: age,
+                hn: hn,
+                phone: phone
+            })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert(`✅ สร้างโปรไฟล์สำเร็จ!\nรหัสพาร์กินสันของคนไข้คือ: ${data.pd_no}`);
+            
+            // ปิด Modal
+            bootstrap.Modal.getInstance(document.getElementById('newPatientModal')).hide();
+            
+            // นำ HN ไปใส่ในช่องค้นหา แล้วโหลดหน้ากราฟขึ้นมาให้พร้อมทำงานทันที
+            document.getElementById('pdInput').value = hn;
+            loadPatientData(); 
+
+        } else {
+            alert("❌ เกิดข้อผิดพลาด: " + data.message);
+        }
+    } catch (e) {
+        alert("❌ การเชื่อมต่อล้มเหลว กรุณาตรวจสอบอินเทอร์เน็ต");
+    } finally {
+        // คืนค่าปุ่มกลับสู่สภาพเดิม
+        btn.innerHTML = "💾 บันทึกข้อมูล";
+        btn.disabled = false;
+    }
+}
