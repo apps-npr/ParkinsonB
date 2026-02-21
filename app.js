@@ -8,6 +8,9 @@ let timelineGroups;
 let currentPatientId = "";
 let savedADRData = { symptoms: [], advices: [], note: "", drpClass: "ไม่พบปัญหาด้านยา (None)" };
 
+// 🌟 ตัวแปรใหม่: เก็บประวัติจาก LINE เพื่อรอการกดปุ่ม Import
+let currentLineLogs = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     fetch('./drugs.json').then(r => r.json()).then(d => { 
         drugMaster = d; 
@@ -56,8 +59,9 @@ async function loadPatientData() {
             if(data.data.patient.Meal_Lunch) document.getElementById('mealLunch').value = data.data.patient.Meal_Lunch;
             if(data.data.patient.Meal_Dinner) document.getElementById('mealDinner').value = data.data.patient.Meal_Dinner;
 
-            // ระบบคัดกรองข้อมูลคนไข้ 30 วันย้อนหลังไปใส่ Modal แจ้งเตือน
             let todayInt = getSortableDateInt(new Date().toISOString().split('T')[0]); 
+            
+            // แยกประวัติที่เป็นของ LINE ออกมา
             let patientReports = data.data.logs.filter(l => {
                 let rep = String(l.Reporter || l.reporter || l['ผู้บันทึก'] || Object.values(l)[6] || "");
                 if (!rep.includes('Patient')) return false;
@@ -67,9 +71,23 @@ async function loadPatientData() {
                 return (todayInt - logInt) <= 100; // คร่าวๆ ประมาณ 30 วัน
             });
             
+            // เก็บเข้าตัวแปรส่วนกลางรอให้ฟังก์ชัน Import ใช้งาน
+            currentLineLogs = patientReports;
+
             let btnLogs = document.getElementById('btnPatientLogs');
             let logContainer = document.getElementById('patientLogsContainer');
             
+            // 🌟 เช็คว่ามีข้อมูลให้ปุ่ม "นำเข้า" โชว์ไหม?
+            let hasSymp = patientReports.some(l => (l.Event_Type || Object.values(l)[3]) === 'OFF-Time' || (l.Event_Type || Object.values(l)[3]) === 'Dyskinesia');
+            let hasMeal = patientReports.some(l => (l.Event_Type || Object.values(l)[3]) === 'LIFF_Submission');
+
+            if(hasSymp) document.getElementById('btnImportSymp').classList.remove('d-none');
+            else document.getElementById('btnImportSymp').classList.add('d-none');
+
+            if(hasMeal) document.getElementById('btnImportMeal').classList.remove('d-none');
+            else document.getElementById('btnImportMeal').classList.add('d-none');
+            
+            // วาด Modal แจ้งเตือนปกติ
             if(patientReports.length > 0) {
                 btnLogs.classList.remove('d-none');
                 let html = '<ul class="list-group shadow-sm">';
@@ -95,6 +113,7 @@ async function loadPatientData() {
             document.getElementById('simulationPanel').classList.remove('d-none');
             document.getElementById('btnArchive').classList.remove('d-none');
             
+            // กรองไม่ให้กราฟพัง
             let clinicOnlyLogs = data.data.logs.filter(l => {
                 let rep = String(l.Reporter || l.reporter || l['ผู้บันทึก'] || Object.values(l)[6] || "");
                 return !rep.includes('Patient');
@@ -108,6 +127,105 @@ async function loadPatientData() {
         alert('เชื่อมต่อล้มเหลว โปรดตรวจสอบอินเทอร์เน็ต'); 
     }
 }
+
+// =========================================================================
+// 🌟🌟🌟 ฟังก์ชันใหม่: ดึงข้อมูลจาก LINE มาลงกราฟและช่องกรอกอัตโนมัติ 🌟🌟🌟
+// =========================================================================
+
+function importLineMeals() {
+    // หา Log ที่เป็นการบันทึกมื้ออาหาร (LIFF_Submission) ล่าสุด
+    let mealLog = currentLineLogs.find(l => (l.Event_Type || Object.values(l)[3]) === 'LIFF_Submission');
+    if (!mealLog) return alert('ไม่พบข้อมูลมื้ออาหารจาก LINE');
+
+    let note = mealLog.Detail_Note || Object.values(mealLog)[7] || "";
+    
+    // แกะข้อความจาก "บันทึกมื้ออาหาร: เช้า=07:00, กลางวัน=12:00, เย็น=17:00"
+    let matchB = note.match(/เช้า=([^,]+)/);
+    let matchL = note.match(/กลางวัน=([^,]+)/);
+    let matchD = note.match(/เย็น=(.+)/);
+
+    let count = 0;
+    if(matchB && matchB[1].trim() !== '-') { document.getElementById('mealBreak').value = matchB[1].trim(); count++; }
+    if(matchL && matchL[1].trim() !== '-') { document.getElementById('mealLunch').value = matchL[1].trim(); count++; }
+    if(matchD && matchD[1].trim() !== '-') { document.getElementById('mealDinner').value = matchD[1].trim(); count++; }
+
+    if (count > 0) {
+        updateMeals();
+        alert('✅ นำเข้ามื้ออาหารจาก LINE สำเร็จ');
+    } else {
+        alert('ผู้ป่วยไม่ได้ระบุเวลามื้ออาหารมาครับ');
+    }
+}
+
+async function importLineSymptoms() {
+    let sympLogs = currentLineLogs.filter(l => {
+        let ev = l.Event_Type || Object.values(l)[3];
+        return ev === 'OFF-Time' || ev === 'Dyskinesia';
+    });
+
+    if (sympLogs.length === 0) return alert('ไม่พบข้อมูลช่วงเวลา OFF/Dys จาก LINE');
+    if (!confirm(`พบข้อมูลอาการ ${sympLogs.length} ช่วงเวลา จากคนไข้\nต้องการนำเข้าและบันทึกลงกราฟของเภสัชกรหรือไม่?`)) return;
+
+    let btn = document.getElementById('btnImportSymp');
+    let originalText = btn.innerText;
+    btn.innerText = "⏳ กำลังดึง...";
+    btn.disabled = true;
+
+    try {
+        let todayStr = new Date().toISOString().split('T')[0];
+        let now = new Date();
+        let todayThaiStr = now.getDate() + "/" + (now.getMonth() + 1) + "/" + (now.getFullYear() + 543);
+
+        // วนลูปส่ง API เพื่อแปลงสถานะให้เป็นของ Pharmacist และวาดลงกราฟ
+        let promises = sympLogs.map(l => {
+            let ev = l.Event_Type || Object.values(l)[3];
+            let st = String(l.Start_Time || Object.values(l)[4] || "").replace(/'/g, ""); // ลบเครื่องหมาย ' ออก
+            let en = String(l.End_Time || Object.values(l)[5] || "").replace(/'/g, "");
+
+            let payload = { 
+                action: 'addLog', 
+                PD_No: currentPatientId, 
+                Date: todayThaiStr, 
+                Event_Type: ev, 
+                Start_Time: st, 
+                End_Time: en, 
+                Reporter: 'Pharmacist', // 🌟 ประทับตราใหม่ว่าเป็นของคลินิก
+                Detail_Note: "Imported from LINE Data" 
+            }; 
+
+            return fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // วาดลงกราฟทันที
+                        let s = new Date(`${todayStr}T${st.substring(0,5)}:00`);
+                        let e = new Date(`${todayStr}T${en.substring(0,5)}:00`);
+                        if (s.getTime() >= e.getTime()) e = new Date(e.getTime() + 86400000); 
+
+                        timelineItems.add({ 
+                            id: data.logId, 
+                            group: 'symptoms', 
+                            content: ev, 
+                            start: s, 
+                            end: e, 
+                            className: ev === 'OFF-Time' ? 'log-off' : 'log-dyskinesia',
+                            editable: { remove: true } 
+                        });
+                    }
+                });
+        });
+
+        await Promise.all(promises);
+        alert('✅ นำเข้าข้อมูลอาการลงกราฟสำเร็จ!');
+    } catch (e) {
+        alert('เกิดข้อผิดพลาดในการนำเข้าข้อมูล');
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
+
+// =========================================================================
 
 function getDrugClass(t) {
     if(!t) return 'med-ldopa-ir';
@@ -379,7 +497,6 @@ function printSystem() {
     let now = new Date();
     let todayThaiStr = now.getDate() + "/" + (now.getMonth() + 1) + "/" + (now.getFullYear() + 543);
     
-    // แอบส่ง Log เข้า Database เพื่อใช้เป็นตัวนับยอด Visit ของคลินิก
     fetch(API_URL, {
         method: 'POST',
         body: JSON.stringify({
@@ -390,7 +507,7 @@ function printSystem() {
             Start_Time: '-',
             End_Time: '-',
             Reporter: 'Pharmacist',
-            Detail_Note: 'เข้ารับบริการ/ปรินต์ใบสรุปแผนการรักษา'
+            Detail_Note: 'เข้ารับบริการที่คลินิก/ปรินต์ใบสรุปแผนการรักษา'
         })
     });
 
@@ -495,16 +612,11 @@ function generateReport() {
     document.getElementById('reportContent').innerHTML = html;
 }
 
-
-// =========================================================================
-// 🌟🌟🌟 ระบบแปลงวันที่อัจฉริยะ (แปลเป็นตัวเลข YYYYMMDD เพื่อลบปัญหา พ.ศ./ค.ศ. ทิ้งถาวร)
-// =========================================================================
 function getSortableDateInt(dateStr) {
     if(!dateStr) return 0;
     let str = String(dateStr).trim();
     let d = 0, m = 0, y = 0;
 
-    // กรณีอ่านจาก Google Sheet เช่น "21/2/2569" หรือ "2/21/2026"
     if(str.includes('/')) {
         let parts = str.split(' ')[0].split('/');
         if (parts.length >= 3) {
@@ -512,20 +624,18 @@ function getSortableDateInt(dateStr) {
             let p1 = parseInt(parts[1], 10);
             let p2 = parseInt(parts[2], 10);
 
-            if (p2 > 1000) { // เป็น DD/MM/YYYY
+            if (p2 > 1000) { 
                 y = p2;
-                if (p0 > 12) { d = p0; m = p1; } // หน้าเป็นวัน หลังเป็นเดือน
-                else if (p1 > 12) { m = p0; d = p1; } // หน้าเป็นเดือน หลังเป็นวัน
-                else { d = p0; m = p1; } // ค่ามาตรฐานไทย
-            } else { // เป็น YYYY/MM/DD
+                if (p0 > 12) { d = p0; m = p1; } 
+                else if (p1 > 12) { m = p0; d = p1; } 
+                else { d = p0; m = p1; } 
+            } else { 
                 y = p0;
                 m = p1;
                 d = p2;
             }
         }
-    } 
-    // กรณีอ่านจากช่องเลือกปฏิทิน เช่น "2026-02-21" หรือ "2569-02-21"
-    else if(str.includes('-')) {
+    } else if(str.includes('-')) {
         let parts = str.split(' ')[0].split('-');
         if (parts.length >= 3) {
             y = parseInt(parts[0], 10);
@@ -534,22 +644,29 @@ function getSortableDateInt(dateStr) {
         }
     }
 
-    // บังคับแปลงเป็น ค.ศ. เพื่อให้ตัวเลขเอาไปเทียบกันได้เสมอ
     if(y > 2500) y -= 543; 
-    
     if(isNaN(y) || isNaN(m) || isNaN(d) || y === 0) return 0;
-    
-    // แปลงออกมาเป็นตัวเลข 8 หลัก เช่น 20260221
     return (y * 10000) + (m * 100) + d;
 }
 
-// 🌟 ระบบ KPI อัปเกรดใหม่ (เปรียบเทียบจากตัวเลขตรงๆ 100% แม่นยำ) 🌟
+function parseInputDateToTs(htmlDateStr) {
+    if (!htmlDateStr) return 0;
+    let parts = htmlDateStr.split('-');
+    if (parts.length === 3) {
+        let y = parseInt(parts[0], 10);
+        if (y > 2500) y -= 543; 
+        let m = parseInt(parts[1], 10) - 1;
+        let d = parseInt(parts[2], 10);
+        return new Date(y, m, d).getTime();
+    }
+    return new Date(htmlDateStr).getTime();
+}
+
 async function fetchKPIReport() {
     let startInput = document.getElementById('kpiStart').value;
     let endInput = document.getElementById('kpiEnd').value;
     if(!startInput || !endInput) return alert("กรุณาเลือกวันที่เริ่มและสิ้นสุด");
 
-    // แปลงวันที่หน้าเว็บให้กลายเป็นตัวเลข
     let startInt = getSortableDateInt(startInput);
     let endInt = getSortableDateInt(endInput);
 
@@ -561,11 +678,8 @@ async function fetchKPIReport() {
         const data = await res.json();
         
         let targetLogs = data.logs.filter(l => {
-            // ดึงวันที่จาก Sheet แล้วแปลงเป็นตัวเลข
             let dateVal = l.Date || l.date || l['วันที่'] || l[' Date'] || l['Date '] || Object.values(l)[2];
             let logInt = getSortableDateInt(dateVal);
-            
-            // นำตัวเลขมาเทียบกันตรงๆ (ไม่ต้องพึ่งพาระบบเวลาของคอมพิวเตอร์)
             return logInt >= startInt && logInt <= endInt;
         });
         
