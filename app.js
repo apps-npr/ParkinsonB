@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
         d.forEach(x=>s.add(new Option(x.name,x.id))); 
     }).catch(e=>alert("โหลดฐานข้อมูลยาล้มเหลว"));
 
-    // ตัวช่วยพิมพ์เวลา (Smart Time Input)
+    // ตัวช่วยพิมพ์เวลา
     document.querySelectorAll('.time-input').forEach(inp => {
         inp.addEventListener('input', function(e) {
             let v = this.value.replace(/[^0-9]/g, '');
@@ -57,6 +57,7 @@ async function loadPatientData() {
             if(data.data.patient.Meal_Lunch) document.getElementById('mealLunch').value = data.data.patient.Meal_Lunch;
             if(data.data.patient.Meal_Dinner) document.getElementById('mealDinner').value = data.data.patient.Meal_Dinner;
 
+            // ระบบคัดกรองข้อมูลคนไข้ 30 วันย้อนหลังไปใส่ Modal แจ้งเตือน
             let thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
             let patientReports = data.data.logs.filter(l => {
                 let rep = String(l.Reporter || l.reporter || l['ผู้บันทึก'] || Object.values(l)[6] || "");
@@ -390,7 +391,7 @@ function printSystem() {
             Start_Time: '-',
             End_Time: '-',
             Reporter: 'Pharmacist',
-            Detail_Note: 'เข้ารับบริการที่คลินิก/ปรินต์ใบสรุปแผนการรักษา'
+            Detail_Note: 'เข้ารับบริการ/ปรินต์ใบสรุปแผนการรักษา'
         })
     });
 
@@ -495,50 +496,56 @@ function generateReport() {
     document.getElementById('reportContent').innerHTML = html;
 }
 
-// 🌟🌟🌟 ตัวแปลงวันที่แบบใหม่ ทนทานต่อทุก Format ใน Google Sheet! 🌟🌟🌟
+// 🌟 ตัวแปลงวันที่แบบใหม่ ทนทานต่อทุก Format ใน Google Sheet และดักปี พ.ศ. 🌟
 function getTimestampForKPI(dateVal) {
     if(!dateVal) return 0;
     let dStr = String(dateVal).trim();
     
-    // 1. ลองให้เบราว์เซอร์จัดการเองก่อน (กรณี Sheet แอบส่งมาเป็น ISO Date เช่น 2026-02-21)
     let testDate = new Date(dStr);
     if (!isNaN(testDate.getTime()) && dStr.includes('-')) {
         return testDate.getTime();
     }
 
-    // 2. กรณีเป็น Format วันที่ของไทย หรือมีเครื่องหมาย / (เช่น 21/2/2569 หรือ 2/21/2026)
     if(dStr.includes('/')) {
         let p = dStr.split(' ')[0].split('/'); 
         if (p.length >= 3) {
             let p0 = parseInt(p[0], 10);
             let p1 = parseInt(p[1], 10);
             let p2 = parseInt(p[2], 10);
-            
             let d, m, y;
             
-            // ตรวจหาว่าตกลงอันไหนคือ ปี, เดือน, วัน กันแน่!
             if (p2 > 1000) {
                 y = p2;
-                if (y > 2500) y -= 543; // แปลง พ.ศ. เป็น ค.ศ.
-                
-                // เช็คว่า Sheet สลับเป็น MM/DD/YYYY หรือไม่
+                if (y > 2500) y -= 543; 
                 if (p0 > 12) { d = p0; m = p1 - 1; }
                 else if (p1 > 12) { m = p0 - 1; d = p1; }
-                else { d = p0; m = p1 - 1; } // ค่าเริ่มต้นให้เป็น DD/MM/YYYY ตามปกติ
+                else { d = p0; m = p1 - 1; } 
             } else {
-                // เผื่อเป็น YYYY/MM/DD
                 y = p0;
                 if (y > 2500) y -= 543;
                 m = p1 - 1;
                 d = p2;
             }
-
             let parsed = new Date(y, m, d);
             if(!isNaN(parsed.getTime())) return parsed.getTime();
         }
     }
-    
-    return 0; // ถ้าอ่านไม่ออกจริงๆ ให้ตีเป็น 0
+    return 0; 
+}
+
+// 🌟 ฟังก์ชันช่วยแปลวันที่จากช่อง <input> ปฏิทินที่อาจเผลอส่งเป็นปี พ.ศ. มาให้ 🌟
+function parseInputDateToTs(htmlDateStr) {
+    if (!htmlDateStr) return 0;
+    let parts = htmlDateStr.split('-');
+    if (parts.length === 3) {
+        let y = parseInt(parts[0], 10);
+        // ถ้าเบราว์เซอร์แอบส่ง 2569 มา เราจะหักลบ 543 ให้กลายเป็น 2026 ทันที!
+        if (y > 2500) y -= 543; 
+        let m = parseInt(parts[1], 10) - 1;
+        let d = parseInt(parts[2], 10);
+        return new Date(y, m, d).getTime();
+    }
+    return new Date(htmlDateStr).getTime();
 }
 
 // 🌟 ระบบ KPI อัปเกรดใหม่ 🌟
@@ -547,8 +554,9 @@ async function fetchKPIReport() {
     let endInput = document.getElementById('kpiEnd').value;
     if(!startInput || !endInput) return alert("กรุณาเลือกวันที่เริ่มและสิ้นสุด");
 
-    let startTs = new Date(startInput).getTime();
-    let endTs = new Date(endInput).getTime() + 86399000; 
+    // แปลงเวลาให้เป็นสากล (ค.ศ.) ป้องกันบั๊กปฏิทินไทย
+    let startTs = parseInputDateToTs(startInput);
+    let endTs = parseInputDateToTs(endInput) + 86399999; 
 
     try {
         document.getElementById('kpiResult').value = "⏳ กำลังดึงข้อมูลและประมวลผล... โปรดรอสักครู่";
@@ -556,16 +564,15 @@ async function fetchKPIReport() {
         const data = await res.json();
         
         let targetLogs = data.logs.filter(l => {
-            // 🛡️ ป้องกันบั๊กชื่อคอลัมน์ไม่ตรงใน Sheet
             let dateVal = l.Date || l.date || l['วันที่'] || l[' Date'] || l['Date '] || Object.values(l)[2];
             let logTs = getTimestampForKPI(dateVal);
             return logTs >= startTs && logTs <= endTs;
         });
         
-        // 🚨 กรณีที่ค้นหาแล้วไม่เจอข้อมูลเลย (ป้องกันการงงว่าทำไม 0 หมด)
+        // แจ้งเตือนดักไว้ เผื่อใน Sheet ไม่มีข้อมูลในวันนั้นจริงๆ
         if (targetLogs.length === 0) {
             let sampleDate = data.logs.length > 0 ? (data.logs[data.logs.length-1].Date || Object.values(data.logs[data.logs.length-1])[2]) : "ไม่มีประวัติในระบบ";
-            document.getElementById('kpiResult').value = `⚠️ ไม่พบข้อมูลในช่วงเวลาที่คุณหมอเลือกครับ\n\n--- ข้อมูลสำหรับการตรวจสอบ ---\nประวัติล่าสุดใน Sheet คือวันที่: ${sampleDate}\nรูปแบบวันที่กำลังค้นหา: ${startInput} ถึง ${endInput}\n\n*ข้อแนะนำ: ลองขยายช่วงเวลาให้กว้างขึ้นครับ*`;
+            document.getElementById('kpiResult').value = `⚠️ ไม่พบข้อมูลในช่วงเวลาที่คุณหมอเลือกครับ\n\n--- ข้อมูลสำหรับการตรวจสอบ ---\nประวัติล่าสุดใน Sheet คือวันที่: ${sampleDate}\nรูปแบบวันที่กำลังค้นหา: ${startInput} ถึง ${endInput}\n\n*ข้อแนะนำ: ลองตรวจสอบวันที่ใน Sheet อีกครั้งครับ*`;
             return;
         }
 
@@ -578,7 +585,6 @@ async function fetchKPIReport() {
         let cAdrDetails = { ortho: 0, fall: 0, nvd: 0, hal: 0, insom: 0, constip: 0, eds: 0 };
 
         targetLogs.forEach(l => {
-            // 🛡️ ดึงข้อมูลแบบ Robust
             let pd = String(l.PD_No || l.pd_no || l['HN'] || Object.values(l)[1] || "");
             let ev = String(l.Event_Type || l.event_type || l['ประเภท'] || Object.values(l)[3] || "");
             let note = String(l.Detail_Note || l.detail_note || l['รายละเอียด'] || Object.values(l)[7] || "");
@@ -586,10 +592,9 @@ async function fetchKPIReport() {
             let dateVal = String(l.Date || l.date || l['วันที่'] || Object.values(l)[2] || "");
             let pd_date = pd + "|" + dateVal;
 
-            if(!pd) return; // ข้ามแถวที่ว่าง
+            if(!pd) return; 
             uniquePatientsAny.add(pd);
 
-            // 1. นับจำนวนการรับบริการ
             if (ev.includes('Clinic_Visit') || ev.includes('DRPs') || note.includes('เข้ารับบริการ') || rep.includes('Pharmacist')) {
                 clinicVisitsMap.add(pd_date);
             }
@@ -597,13 +602,11 @@ async function fetchKPIReport() {
                 liffVisitsMap.add(pd_date);
             }
 
-            // 2. นับ Motor Complications 
             if (ev.includes('OFF') || note.includes('Wearing-off') || note.includes('OFF-Time')) cMotorStats.off.add(pd);
             if (ev.includes('Dys') || note.includes('Dyskinesia')) cMotorStats.dys.add(pd);
             if (note.includes('Delayed ON') || note.includes('ออกฤทธิ์ช้า')) cMotorStats.delOn.add(pd);
             if (note.includes('Morning Akinesia') || note.includes('ตื่นเช้ามา')) cMotorStats.mornAki.add(pd);
 
-            // 3. นับหมวดหมู่ DRPs
             if (note.includes('Class: ')) {
                 cDrpStats.any.add(pd);
                 if(note.includes('Adverse drug reaction') || note.includes('ADR')) cDrpStats.adr.add(pd);
@@ -613,7 +616,6 @@ async function fetchKPIReport() {
                 if(note.includes('พบหลายปัญหา')) cDrpStats.multiple.add(pd);
             }
 
-            // 4. นับรายละเอียดของ ADR (นับรวมทุกครั้งที่เกิด)
             if (note.includes('หน้ามืด') || note.includes('วูบ')) cAdrDetails.ortho++;
             if (note.includes('หกล้ม') || note.includes('ทรงตัวไม่อยู่')) cAdrDetails.fall++;
             if (note.includes('คลื่นไส้') || note.includes('อาเจียน')) cAdrDetails.nvd++;
