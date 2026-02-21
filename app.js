@@ -619,3 +619,56 @@ async function saveNewPatient() {
         btn.disabled = false;
     }
 }
+
+// ==========================================
+// 🌟 ระบบแสดงรูปยาผู้ป่วยสำหรับเภสัชกร
+// ==========================================
+function showPatientDrugsModal() {
+    let container = document.getElementById('patientDrugsContainer');
+    
+    // ดึงรหัสยา (Drug_ID) ที่มีอยู่บนกราฟ ณ ปัจจุบัน (ไม่ให้ซ้ำกัน)
+    let currentMeds = [];
+    timelineItems.get().forEach(i => {
+        if (i.group !== 'symptoms' && i._drugData && i._drugData.isOriginal) {
+            if (!currentMeds.includes(i._drugData.id)) {
+                currentMeds.push(i._drugData.id);
+            }
+        }
+    });
+
+    if (currentMeds.length === 0) {
+        container.innerHTML = '<p class="text-center text-muted my-4">ไม่พบรายการยาที่ผู้ป่วยกำลังทาน (กราฟว่างเปล่า)</p>';
+    } else {
+        let html = "";
+        currentMeds.forEach(drugId => {
+            // ไปค้นหาข้อมูลยาในฐานข้อมูล (drugs.json)
+            let drugInfo = drugMaster.find(d => d.id === drugId);
+            if (drugInfo) {
+                let pillImg = drugInfo.pill_image || "https://cdn-icons-png.flaticon.com/512/822/822092.png";
+                let packImg = drugInfo.pack_image; // ดึงรูปแผงยามาด้วยถ้ามี
+                
+                // สร้างกล่องรูปภาพ
+                let imagesHtml = `<img src="${pillImg}" class="drug-img shadow-sm" alt="เม็ดยา">`;
+                if (packImg) {
+                    imagesHtml += `<img src="${packImg}" class="drug-img shadow-sm" alt="แผงยา">`;
+                }
+
+                html += `
+                <div class="drug-card shadow-sm">
+                    <div class="d-flex align-items-center me-3">
+                        ${imagesHtml}
+                    </div>
+                    <div>
+                        <h6 class="mb-1 fw-bold text-dark">${drugInfo.name}</h6>
+                        <small class="text-muted">รหัสยา: ${drugInfo.id} | ชนิด: ${drugInfo.type}</small>
+                    </div>
+                </div>`;
+            }
+        });
+        container.innerHTML = html;
+    }
+
+    // เรียกเปิด Modal
+    let modal = new bootstrap.Modal(document.getElementById('patientDrugsModal'));
+    modal.show();
+}
