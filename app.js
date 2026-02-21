@@ -15,7 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
         d.forEach(x=>s.add(new Option(x.name,x.id))); 
     }).catch(e=>alert("โหลดฐานข้อมูลยาล้มเหลว"));
 
-    // ตัวช่วยพิมพ์เวลา
     document.querySelectorAll('.time-input').forEach(inp => {
         inp.addEventListener('input', function(e) {
             let v = this.value.replace(/[^0-9]/g, '');
@@ -58,14 +57,14 @@ async function loadPatientData() {
             if(data.data.patient.Meal_Dinner) document.getElementById('mealDinner').value = data.data.patient.Meal_Dinner;
 
             // ระบบคัดกรองข้อมูลคนไข้ 30 วันย้อนหลังไปใส่ Modal แจ้งเตือน
-            let thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            let todayInt = getSortableDateInt(new Date().toISOString().split('T')[0]); 
             let patientReports = data.data.logs.filter(l => {
                 let rep = String(l.Reporter || l.reporter || l['ผู้บันทึก'] || Object.values(l)[6] || "");
                 if (!rep.includes('Patient')) return false;
                 
                 let dateVal = l.Date || l.date || l['วันที่'] || l[' Date'] || l['Date '] || Object.values(l)[2];
-                let ts = getTimestampForKPI(dateVal); 
-                return ts >= thirtyDaysAgo;
+                let logInt = getSortableDateInt(dateVal); 
+                return (todayInt - logInt) <= 100; // คร่าวๆ ประมาณ 30 วัน
             });
             
             let btnLogs = document.getElementById('btnPatientLogs');
@@ -496,67 +495,65 @@ function generateReport() {
     document.getElementById('reportContent').innerHTML = html;
 }
 
-// 🌟 ตัวแปลงวันที่แบบใหม่ ทนทานต่อทุก Format ใน Google Sheet และดักปี พ.ศ. 🌟
-function getTimestampForKPI(dateVal) {
-    if(!dateVal) return 0;
-    let dStr = String(dateVal).trim();
-    
-    let testDate = new Date(dStr);
-    if (!isNaN(testDate.getTime()) && dStr.includes('-')) {
-        return testDate.getTime();
-    }
 
-    if(dStr.includes('/')) {
-        let p = dStr.split(' ')[0].split('/'); 
-        if (p.length >= 3) {
-            let p0 = parseInt(p[0], 10);
-            let p1 = parseInt(p[1], 10);
-            let p2 = parseInt(p[2], 10);
-            let d, m, y;
-            
-            if (p2 > 1000) {
+// =========================================================================
+// 🌟🌟🌟 ระบบแปลงวันที่อัจฉริยะ (แปลเป็นตัวเลข YYYYMMDD เพื่อลบปัญหา พ.ศ./ค.ศ. ทิ้งถาวร)
+// =========================================================================
+function getSortableDateInt(dateStr) {
+    if(!dateStr) return 0;
+    let str = String(dateStr).trim();
+    let d = 0, m = 0, y = 0;
+
+    // กรณีอ่านจาก Google Sheet เช่น "21/2/2569" หรือ "2/21/2026"
+    if(str.includes('/')) {
+        let parts = str.split(' ')[0].split('/');
+        if (parts.length >= 3) {
+            let p0 = parseInt(parts[0], 10);
+            let p1 = parseInt(parts[1], 10);
+            let p2 = parseInt(parts[2], 10);
+
+            if (p2 > 1000) { // เป็น DD/MM/YYYY
                 y = p2;
-                if (y > 2500) y -= 543; 
-                if (p0 > 12) { d = p0; m = p1 - 1; }
-                else if (p1 > 12) { m = p0 - 1; d = p1; }
-                else { d = p0; m = p1 - 1; } 
-            } else {
+                if (p0 > 12) { d = p0; m = p1; } // หน้าเป็นวัน หลังเป็นเดือน
+                else if (p1 > 12) { m = p0; d = p1; } // หน้าเป็นเดือน หลังเป็นวัน
+                else { d = p0; m = p1; } // ค่ามาตรฐานไทย
+            } else { // เป็น YYYY/MM/DD
                 y = p0;
-                if (y > 2500) y -= 543;
-                m = p1 - 1;
+                m = p1;
                 d = p2;
             }
-            let parsed = new Date(y, m, d);
-            if(!isNaN(parsed.getTime())) return parsed.getTime();
+        }
+    } 
+    // กรณีอ่านจากช่องเลือกปฏิทิน เช่น "2026-02-21" หรือ "2569-02-21"
+    else if(str.includes('-')) {
+        let parts = str.split(' ')[0].split('-');
+        if (parts.length >= 3) {
+            y = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10);
+            d = parseInt(parts[2], 10);
         }
     }
-    return 0; 
+
+    // บังคับแปลงเป็น ค.ศ. เพื่อให้ตัวเลขเอาไปเทียบกันได้เสมอ
+    if(y > 2500) y -= 543; 
+    
+    if(isNaN(y) || isNaN(m) || isNaN(d) || y === 0) return 0;
+    
+    // แปลงออกมาเป็นตัวเลข 8 หลัก เช่น 20260221
+    return (y * 10000) + (m * 100) + d;
 }
 
-// 🌟 ฟังก์ชันช่วยแปลวันที่จากช่อง <input> ปฏิทินที่อาจเผลอส่งเป็นปี พ.ศ. มาให้ 🌟
-function parseInputDateToTs(htmlDateStr) {
-    if (!htmlDateStr) return 0;
-    let parts = htmlDateStr.split('-');
-    if (parts.length === 3) {
-        let y = parseInt(parts[0], 10);
-        // ถ้าเบราว์เซอร์แอบส่ง 2569 มา เราจะหักลบ 543 ให้กลายเป็น 2026 ทันที!
-        if (y > 2500) y -= 543; 
-        let m = parseInt(parts[1], 10) - 1;
-        let d = parseInt(parts[2], 10);
-        return new Date(y, m, d).getTime();
-    }
-    return new Date(htmlDateStr).getTime();
-}
-
-// 🌟 ระบบ KPI อัปเกรดใหม่ 🌟
+// 🌟 ระบบ KPI อัปเกรดใหม่ (เปรียบเทียบจากตัวเลขตรงๆ 100% แม่นยำ) 🌟
 async function fetchKPIReport() {
     let startInput = document.getElementById('kpiStart').value;
     let endInput = document.getElementById('kpiEnd').value;
     if(!startInput || !endInput) return alert("กรุณาเลือกวันที่เริ่มและสิ้นสุด");
 
-    // แปลงเวลาให้เป็นสากล (ค.ศ.) ป้องกันบั๊กปฏิทินไทย
-    let startTs = parseInputDateToTs(startInput);
-    let endTs = parseInputDateToTs(endInput) + 86399999; 
+    // แปลงวันที่หน้าเว็บให้กลายเป็นตัวเลข
+    let startInt = getSortableDateInt(startInput);
+    let endInt = getSortableDateInt(endInput);
+
+    if(startInt === 0 || endInt === 0) return alert("รูปแบบวันที่ไม่ถูกต้อง");
 
     try {
         document.getElementById('kpiResult').value = "⏳ กำลังดึงข้อมูลและประมวลผล... โปรดรอสักครู่";
@@ -564,15 +561,17 @@ async function fetchKPIReport() {
         const data = await res.json();
         
         let targetLogs = data.logs.filter(l => {
+            // ดึงวันที่จาก Sheet แล้วแปลงเป็นตัวเลข
             let dateVal = l.Date || l.date || l['วันที่'] || l[' Date'] || l['Date '] || Object.values(l)[2];
-            let logTs = getTimestampForKPI(dateVal);
-            return logTs >= startTs && logTs <= endTs;
+            let logInt = getSortableDateInt(dateVal);
+            
+            // นำตัวเลขมาเทียบกันตรงๆ (ไม่ต้องพึ่งพาระบบเวลาของคอมพิวเตอร์)
+            return logInt >= startInt && logInt <= endInt;
         });
         
-        // แจ้งเตือนดักไว้ เผื่อใน Sheet ไม่มีข้อมูลในวันนั้นจริงๆ
         if (targetLogs.length === 0) {
             let sampleDate = data.logs.length > 0 ? (data.logs[data.logs.length-1].Date || Object.values(data.logs[data.logs.length-1])[2]) : "ไม่มีประวัติในระบบ";
-            document.getElementById('kpiResult').value = `⚠️ ไม่พบข้อมูลในช่วงเวลาที่คุณหมอเลือกครับ\n\n--- ข้อมูลสำหรับการตรวจสอบ ---\nประวัติล่าสุดใน Sheet คือวันที่: ${sampleDate}\nรูปแบบวันที่กำลังค้นหา: ${startInput} ถึง ${endInput}\n\n*ข้อแนะนำ: ลองตรวจสอบวันที่ใน Sheet อีกครั้งครับ*`;
+            document.getElementById('kpiResult').value = `⚠️ ไม่พบข้อมูลในช่วงเวลาที่คุณหมอเลือกครับ\n\n--- ข้อมูลสำหรับการตรวจสอบ ---\nประวัติล่าสุดใน Sheet คือวันที่: ${sampleDate}\nรูปแบบวันที่กำลังค้นหา: ${startInput} ถึง ${endInput}`;
             return;
         }
 
