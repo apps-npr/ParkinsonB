@@ -121,8 +121,12 @@
             </div>
             <div class="col-md-4">
                 <div class="symptom-panel h-100" style="background-color: #fce4ec; border-color: #f48fb1;">
-                    <h6 class="text-danger">🚨 บันทึกอาการ (Logs)</h6>
-                    <select id="symType" class="form-select mt-3 mb-2"><option value="OFF-Time">OFF-Time</option><option value="Dyskinesia">Dyskinesia</option></select>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="text-danger m-0">🚨 บันทึกอาการ (Logs)</h6>
+                        <button id="btnImportSymp" class="btn btn-sm btn-danger py-0 px-2 d-none shadow-sm" onclick="importLineSymptoms()">📥 นำเข้าจาก LINE</button>
+                    </div>
+                    
+                    <select id="symType" class="form-select mb-2"><option value="OFF-Time">OFF-Time</option><option value="Dyskinesia">Dyskinesia</option></select>
                     <div class="row align-items-end">
                         <div class="col-md-5"><label class="small text-muted mb-1">เริ่ม</label><input type="text" id="symStart" class="form-control time-input" placeholder="0000" maxlength="5"></div>
                         <div class="col-md-5"><label class="small text-muted mb-1">สิ้นสุด</label><input type="text" id="symEnd" class="form-control time-input" placeholder="0000" maxlength="5"></div>
@@ -132,13 +136,17 @@
             </div>
             <div class="col-md-3">
                 <div class="meal-panel h-100" style="background-color: #fff3e0; border-color: #ffb74d;">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h6 class="text-warning text-darken-2 m-0">🍽️ มื้ออาหาร</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex align-items-center">
+                            <h6 class="text-warning text-darken-2 m-0 me-2">🍽️ มื้ออาหาร</h6>
+                            <button id="btnImportMeal" class="btn btn-sm btn-warning text-dark py-0 px-2 d-none shadow-sm" onclick="importLineMeals()">📥 นำเข้า</button>
+                        </div>
                         <div class="form-check form-switch m-0">
                             <input class="form-check-input" type="checkbox" id="toggleMeals" checked onchange="updateMeals()">
                         </div>
                     </div>
-                    <div class="input-group input-group-sm mb-2 mt-3">
+
+                    <div class="input-group input-group-sm mb-2 mt-1">
                         <span class="input-group-text bg-light">เช้า</span>
                         <input type="text" id="mealBreak" class="form-control time-input" placeholder="เว้นว่างได้" value="07:00">
                     </div>
@@ -163,7 +171,6 @@
             <button class="btn btn-warning btn-sm" onclick="printSystem()">🖨️ สร้างใบสรุปแพทย์ (A5)</button>
         </div>
     </div>
-
     <div id="aiRecommendationArea" class="ai-panel d-none no-print">
         <h5 id="aiTitle" class="text-success mb-3"></h5>
         <div class="alert alert-success"><strong>🌟 คาแนะนา:</strong><p id="aiBest" class="mb-0 mt-1"></p></div>
