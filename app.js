@@ -236,7 +236,7 @@ function analyzeRegimen() {
     document.getElementById('aiRecommendationArea').classList.remove('d-none');
 }
 
-// 🌟 สมองกลคำนวณ LEDD (พร้อมแก้ไขบั๊ก HBS และคูณ Comtan 33%)
+// 🌟 สมองกลคำนวณ LEDD
 function calculateLEDD(medsList) {
     let totalLdopa = 0;
     let breakdowns = [];
@@ -273,7 +273,6 @@ function calculateLEDD(medsList) {
 
             if (name.includes('madopar') || name.includes('vopar')) {
                 isLdopa = true;
-                // 🌟 ดักจับ HBS ก่อนเสมอตามที่คุณหมอแนะนำ
                 if (name.includes('hbs')) baseDose = 100 * 0.75; 
                 else if (name.includes('125') || name.includes('100/25') || name.includes(' 100')) baseDose = 100;
                 else if (name.includes('250') || name.includes('200/50')) baseDose = 200;
@@ -377,7 +376,6 @@ function generateReport() {
     html += `<div class="report-header text-success">📌 แผนการจัดตารางยาใหม่:</div><ul style="margin-bottom: 2px;">`;
     for(let k in meds) html += `<li><strong>${k}</strong>: ${meds[k].sort().join(', ')}</li>`;
     
-    // 🌟 แสดง Total Levodopa แบบประหยัดเนื้อที่ พร้อมปุ่ม "ดูการคำนวณ" ที่ซ่อนได้และไม่ปรินต์ออกกระดาษ
     if(newDoseObj.ldopa > 0) {
         html += `<li class="mt-2 text-primary" style="list-style-type: none; margin-left: -20px; font-size: 11px;">
             <strong>💊 Total Levodopa Dose:</strong> <b>${newDoseObj.ldopa} mg/day</b>
@@ -565,8 +563,9 @@ async function saveNewPatient() {
                 action: 'createNewPatient',
                 name: name,
                 age: age,
-                hn: hn,
-                phone: phone
+                // 🌟 เติมเครื่องหมาย ' (Single Quote) ลงไปก่อนส่งข้อมูล เพื่อกันเลข 0 หาย!
+                hn: "'" + hn,
+                phone: "'" + phone
             })
         });
         const data = await response.json();
@@ -577,7 +576,7 @@ async function saveNewPatient() {
             // ปิด Modal
             bootstrap.Modal.getInstance(document.getElementById('newPatientModal')).hide();
             
-            // นำ HN ไปใส่ในช่องค้นหา แล้วโหลดหน้ากราฟขึ้นมาให้พร้อมทำงานทันที
+            // 🌟 นำ HN ตัวออริจินัล (ที่ไม่มี ') ไปใส่ในช่องค้นหาเพื่อโหลดกราฟ
             document.getElementById('pdInput').value = hn;
             loadPatientData(); 
 
