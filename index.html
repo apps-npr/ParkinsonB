@@ -91,7 +91,12 @@
 
     <div id="patientInfoCard" class="alert alert-info d-none d-flex justify-content-between align-items-center no-print">
         <div><h5 id="pName" class="mb-1 fw-bold"></h5><span id="pHN"></span></div>
-        <button class="btn btn-dark" onclick="saveMedsToDB()">💾 บันทึกยา</button>
+        <div>
+            <button id="btnPatientLogs" class="btn btn-danger d-none me-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#patientLogsModal">
+                🚨 มีรายงานจากผู้ป่วย
+            </button>
+            <button class="btn btn-dark shadow-sm" onclick="saveMedsToDB()">💾 บันทึกยา</button>
+        </div>
     </div>
 
     <div id="simulationPanel" class="d-none no-print">
@@ -284,6 +289,20 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
                 <button type="button" class="btn btn-success" id="btnSavePatient" onclick="saveNewPatient()">💾 บันทึกข้อมูล</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade no-print" id="patientLogsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title fw-bold">📱 รายงานอาการจากผู้ป่วยผ่าน LINE (30 วันย้อนหลัง)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-light">
+                <div id="patientLogsContainer"></div>
             </div>
         </div>
     </div>
