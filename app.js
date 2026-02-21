@@ -15,22 +15,18 @@ document.addEventListener('DOMContentLoaded', () => {
         d.forEach(x=>s.add(new Option(x.name,x.id))); 
     }).catch(e=>alert("โหลดฐานข้อมูลยาล้มเหลว"));
 
-    // ตัวช่วยพิมพ์เวลา (Smart Time Input) พิมพ์ 0800 เป็น 08:00 อัตโนมัติ
+    // ตัวช่วยพิมพ์เวลา
     document.querySelectorAll('.time-input').forEach(inp => {
         inp.addEventListener('input', function(e) {
             let v = this.value.replace(/[^0-9]/g, '');
-            if (v.length >= 3) {
-                v = v.substring(0, 2) + ':' + v.substring(2, 4);
-            }
+            if (v.length >= 3) v = v.substring(0, 2) + ':' + v.substring(2, 4);
             this.value = v;
         });
         inp.addEventListener('blur', function() {
             let v = this.value.replace(/[^0-9]/g, '');
-            if(v.length === 0) return; // อนุญาตให้เว้นว่างได้
+            if(v.length === 0) return; 
             if(v.length === 3) v = '0' + v; 
-            if(v.length === 4) {
-                this.value = v.substring(0, 2) + ':' + v.substring(2, 4);
-            }
+            if(v.length === 4) this.value = v.substring(0, 2) + ':' + v.substring(2, 4);
         });
     });
 });
@@ -61,11 +57,10 @@ async function loadPatientData() {
             if(data.data.patient.Meal_Lunch) document.getElementById('mealLunch').value = data.data.patient.Meal_Lunch;
             if(data.data.patient.Meal_Dinner) document.getElementById('mealDinner').value = data.data.patient.Meal_Dinner;
 
-            // 🌟 ระบบคัดกรองข้อมูลคนไข้ 30 วันย้อนหลังไปใส่ Modal แจ้งเตือน 🌟
             let thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
             let patientReports = data.data.logs.filter(l => {
                 if (l.Reporter !== 'Patient via LINE') return false;
-                let ts = getTimestampForKPI(l.Date); // ดึงวันที่มาเทียบ 30 วัน
+                let ts = getTimestampForKPI(l.Date); 
                 return ts >= thirtyDaysAgo;
             });
             
@@ -94,7 +89,6 @@ async function loadPatientData() {
             document.getElementById('simulationPanel').classList.remove('d-none');
             document.getElementById('btnArchive').classList.remove('d-none');
             
-            // 🌟 สำคัญที่สุด: กรองเอาเฉพาะข้อมูลที่ "ไม่ใช่คนไข้ผ่าน LINE" ไปให้กราฟวาด กราฟจะได้ไม่ช็อก! 🌟
             let clinicOnlyLogs = data.data.logs.filter(l => l.Reporter !== 'Patient via LINE');
             renderTimeline(data.data.medications, clinicOnlyLogs);
 
@@ -291,7 +285,6 @@ function analyzeRegimen() {
     document.getElementById('aiRecommendationArea').classList.remove('d-none');
 }
 
-// 🌟 สมองกลคำนวณ LEDD
 function calculateLEDD(medsList) {
     let totalLdopa = 0;
     let breakdowns = [];
@@ -369,7 +362,24 @@ function calculateLEDD(medsList) {
     };
 }
 
+// 🌟 อัปเดต: ให้แอบส่งบันทึก "เข้ารับบริการ" ไปที่ Sheet เวลาที่กดปุ่มพริ้นต์ (เพื่อเก็บ KPI)
 function printSystem() {
+    // แอบส่ง Log เข้า Database เพื่อใช้เป็นตัวนับยอด Visit ของคลินิก
+    let todayThaiStr = new Date().toLocaleDateString('th-TH');
+    fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'addLog',
+            PD_No: currentPatientId,
+            Date: todayThaiStr,
+            Event_Type: 'Clinic_Visit',
+            Start_Time: '-',
+            End_Time: '-',
+            Reporter: 'Pharmacist',
+            Detail_Note: 'เข้ารับบริการ/ปรินต์ใบสรุปแผนการรักษา'
+        })
+    });
+
     const today = new Date().toISOString().split('T')[0];
     timeline.setWindow(new Date(`${today}T00:00:00`), new Date(`${today}T23:59:59`), { animation: false });
     
@@ -492,6 +502,7 @@ function getTimestampForKPI(dateStr) {
     return 0;
 }
 
+// 🌟 อัปเดต: รื้อระบบ KPI ใหม่ให้คำนวณละเอียดขึ้นตามฟอร์มโรงพยาบาล 🌟
 async function fetchKPIReport() {
     let startInput = document.getElementById('kpiStart').value;
     let endInput = document.getElementById('kpiEnd').value;
@@ -501,7 +512,7 @@ async function fetchKPIReport() {
     let endTs = new Date(endInput).getTime() + 86399000; 
 
     try {
-        document.getElementById('kpiResult').value = "⏳ กำลังดึงข้อมูลและประมวลผล...";
+        document.getElementById('kpiResult').value = "⏳ กำลังดึงข้อมูลและประมวลผล... โปรดรอสักครู่";
         const res = await fetch(`${API_URL}?action=getKPIReport`);
         const data = await res.json();
         
@@ -510,52 +521,100 @@ async function fetchKPIReport() {
             return logTs >= startTs && logTs <= endTs;
         });
         
-        let uniquePatients = new Set(targetLogs.map(l => l.PD_No));
-        let totalPatients = uniquePatients.size;
+        // --- ส่วนคำนวณ KPI ใหม่ ---
+        let clinicVisitsMap = new Set(); // เก็บ PD_No + วันที่ เพื่อป้องกันนับผู้ป่วยซ้ำในวันเดียวกัน
+        let liffVisitsMap = new Set();
         
-        let cMotorAny = 0, cOff = 0, cDys = 0, cDelOn = 0, cMornAki = 0;
-        let cDrpAny = 0, cNonComp = 0, cDrugFood = 0, cAdr = 0;
+        let uniquePatientsAny = new Set(); // ผู้ป่วยทั้งหมดที่โผล่มาใน log ไม่ว่าจากแหล่งไหน
+        
+        let cMotorStats = { off: new Set(), dys: new Set(), delOn: new Set(), mornAki: new Set() };
+        let cDrpStats = { any: new Set(), adr: new Set(), nc: new Set(), nd: new Set(), di: new Set(), multiple: new Set() };
+        let cAdrDetails = { ortho: 0, fall: 0, nvd: 0, hal: 0, insom: 0, constip: 0, eds: 0 };
 
-        uniquePatients.forEach(pd => {
-            let pLogs = targetLogs.filter(l => l.PD_No === pd);
-            
-            let hasOff = pLogs.some(l => l.Event_Type === 'OFF-Time' || (l.Detail_Note && l.Detail_Note.includes('Wearing-off')));
-            let hasDys = pLogs.some(l => l.Event_Type === 'Dyskinesia' || (l.Detail_Note && l.Detail_Note.includes('Dyskinesia')));
-            let hasDelOn = pLogs.some(l => l.Detail_Note && l.Detail_Note.includes('Delayed ON'));
-            let hasMorn = pLogs.some(l => l.Detail_Note && l.Detail_Note.includes('Morning Akinesia'));
-            if(hasOff || hasDys || hasDelOn || hasMorn) cMotorAny++;
-            if(hasOff) cOff++; if(hasDys) cDys++; if(hasDelOn) cDelOn++; if(hasMorn) cMornAki++;
+        targetLogs.forEach(l => {
+            let pd = l.PD_No;
+            let ev = l.Event_Type;
+            let note = l.Detail_Note || "";
+            let pd_date = pd + "|" + l.Date;
 
-            let hasNonComp = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('ลืมกินยา') || l.Detail_Note.includes('ปรับเพิ่ม') || l.Detail_Note.includes('ปรับลด') || l.Detail_Note.includes('ผิดขนาด')));
-            let hasDrugFood = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('ก่อนอาหารน้อยกว่า 30 นาที') || l.Detail_Note.includes('อาหารโปรตีนสูง')));
-            let hasAdr = pLogs.some(l => l.Detail_Note && (l.Detail_Note.includes('หน้ามืด') || l.Detail_Note.includes('หกล้ม') || l.Detail_Note.includes('คลื่นไส้') || l.Detail_Note.includes('ภาพหลอน') || l.Detail_Note.includes('นอนไม่หลับ') || l.Detail_Note.includes('ท้องผูก') || l.Detail_Note.includes('ง่วงซึม') || l.Detail_Note.includes('ปัสสาวะ') || l.Detail_Note.includes('น้ำลายไหล') || l.Detail_Note.includes('กลืนลำบาก') || l.Detail_Note.includes('วิงเวียน')));
-            
-            if(hasNonComp || hasDrugFood || hasAdr) cDrpAny++;
-            if(hasNonComp) cNonComp++; if(hasDrugFood) cDrugFood++; if(hasAdr) cAdr++;
+            uniquePatientsAny.add(pd);
+
+            // 1. นับจำนวนการเข้ารับบริการ (ตัดซ้ำรายวัน)
+            if (ev === 'Clinic_Visit' || ev === 'DRPs/ADR Check') clinicVisitsMap.add(pd_date);
+            if (ev === 'LIFF_Submission') liffVisitsMap.add(pd_date);
+
+            // 2. นับ Motor Complications (เอาเฉพาะเคสที่ประเมินโดยเภสัชกร เพื่อความแม่นยำทางคลินิก)
+            if (l.Reporter === 'Pharmacist') {
+                if(ev === 'OFF-Time' || note.includes('Wearing-off') || note.includes('OFF-Time')) cMotorStats.off.add(pd);
+                if(ev === 'Dyskinesia' || note.includes('Dyskinesia')) cMotorStats.dys.add(pd);
+                if(note.includes('Delayed ON')) cMotorStats.delOn.add(pd);
+                if(note.includes('Morning Akinesia')) cMotorStats.mornAki.add(pd);
+
+                // 3. นับหมวดหมู่ DRPs (อิงจากการกดเลือก Class ตอนเซฟ ADR)
+                if(note.includes('Class: ')) {
+                    cDrpStats.any.add(pd);
+                    if(note.includes('Adverse drug reaction')) cDrpStats.adr.add(pd);
+                    if(note.includes('Non-Compliance')) cDrpStats.nc.add(pd);
+                    if(note.includes('Need for additional')) cDrpStats.nd.add(pd);
+                    if(note.includes('Drug interaction')) cDrpStats.di.add(pd);
+                    if(note.includes('พบหลายปัญหา')) cDrpStats.multiple.add(pd);
+                }
+
+                // 4. นับจำนวนครั้งที่เกิด ADR ประเภทย่อย
+                if(ev === 'DRPs/ADR Check') {
+                    if(note.includes('หน้ามืด')) cAdrDetails.ortho++;
+                    if(note.includes('หกล้ม')) cAdrDetails.fall++;
+                    if(note.includes('คลื่นไส้')) cAdrDetails.nvd++;
+                    if(note.includes('ภาพหลอน')) cAdrDetails.hal++;
+                    if(note.includes('นอนไม่หลับ')) cAdrDetails.insom++;
+                    if(note.includes('ท้องผูก')) cAdrDetails.constip++;
+                    if(note.includes('ง่วงซึม')) cAdrDetails.eds++;
+                }
+            }
         });
         
-        let getPct = (count) => totalPatients ? ((count/totalPatients)*100).toFixed(1) : 0;
+        let totalPatients = uniquePatientsAny.size;
+        let getPct = (count) => totalPatients > 0 ? ((count/totalPatients)*100).toFixed(1) : 0;
 
-        let resultTxt = `รายงานตัวชี้วัดผลการปฏิบัติงาน คลินิกพาร์กินสัน\n`;
-        resultTxt += `ช่วงเวลา: ${startInput} ถึง ${endInput}\n\n`;
-        resultTxt += `1. ภาระงานคลินิกพาร์กินสัน\n`;
-        resultTxt += `  - ผู้ป่วยมารับบริการและประเมินทั้งหมด: ${totalPatients} ราย\n\n`;
+        // --- สร้างข้อความรายงาน ---
+        let resultTxt = `รายงานตัวชี้วัดผลการปฏิบัติงาน คลินิกพาร์กินสัน (Pharmacist Ambu KPI)\n`;
+        resultTxt += `ช่วงเวลาประเมิน: ${startInput} ถึง ${endInput}\n`;
+        resultTxt += `==============================================\n\n`;
+        
+        resultTxt += `1. สถิติการรับบริการ (Service Workload)\n`;
+        resultTxt += `   - จำนวนผู้ป่วยที่เข้ารับบริการทั้งหมด (Unique Patients): ${totalPatients} ราย\n`;
+        resultTxt += `   - จำนวนครั้งที่มารับบริการที่คลินิก (Clinic Visits): ${clinicVisitsMap.size} ครั้ง\n`;
+        resultTxt += `   - จำนวนครั้งที่ผู้ป่วยส่งข้อมูลผ่าน LINE (LIFF Submissions): ${liffVisitsMap.size} ครั้ง\n\n`;
         
         resultTxt += `2. ปัญหาความผิดปกติทางการเคลื่อนไหว (Motor Complications)\n`;
-        resultTxt += `  - พบผู้ป่วยที่มีอาการรวม: ${cMotorAny} ราย (${getPct(cMotorAny)}%)\n`;
-        resultTxt += `      > Wearing-off: ${cOff} ราย\n`;
-        resultTxt += `      > Dyskinesia: ${cDys} ราย\n`;
-        resultTxt += `      > Delayed ON: ${cDelOn} ราย\n`;
-        resultTxt += `      > Morning Akinesia: ${cMornAki} ราย\n\n`;
+        let totalMotor = new Set([...cMotorStats.off, ...cMotorStats.dys, ...cMotorStats.delOn, ...cMotorStats.mornAki]).size;
+        resultTxt += `   - พบผู้ป่วยที่มีอาการรวม: ${totalMotor} ราย (${getPct(totalMotor)}%)\n`;
+        resultTxt += `       > Wearing-off: ${cMotorStats.off.size} ราย\n`;
+        resultTxt += `       > Dyskinesia: ${cMotorStats.dys.size} ราย\n`;
+        resultTxt += `       > Delayed ON: ${cMotorStats.delOn.size} ราย\n`;
+        resultTxt += `       > Morning Akinesia: ${cMotorStats.mornAki.size} ราย\n\n`;
 
-        resultTxt += `3. ปัญหาด้านยา (Drug-Related Problems: DRPs)\n`;
-        resultTxt += `  - พบผู้ป่วยที่มีปัญหาด้านยารวม: ${cDrpAny} ราย (${getPct(cDrpAny)}%)\n`;
-        resultTxt += `      > ความร่วมมือในการใช้ยา (Non-compliance): ${cNonComp} ราย\n`;
-        resultTxt += `      > อันตรกิริยาระหว่างยาและอาหาร (Drug-Food Int.): ${cDrugFood} ราย\n`;
-        resultTxt += `      > อาการข้างเคียงจากยา (ADRs): ${cAdr} ราย\n`;
+        resultTxt += `3. ปัญหาที่เกี่ยวเนื่องกับยา (Drug-Related Problems: DRPs)\n`;
+        resultTxt += `   - พบผู้ป่วยที่มีปัญหาด้านยา (รวมทุก Class): ${cDrpStats.any.size} ราย (${getPct(cDrpStats.any.size)}%)\n`;
+        resultTxt += `       > ความไม่ร่วมมือในการใช้ยา (Non-compliance): ${cDrpStats.nc.size} ราย\n`;
+        resultTxt += `       > ความจำเป็นต้องได้รับยาเพิ่ม (Need additional therapy): ${cDrpStats.nd.size} ราย\n`;
+        resultTxt += `       > อันตรกิริยาระหว่างยาและอาหาร (Drug/Food Interaction): ${cDrpStats.di.size} ราย\n`;
+        resultTxt += `       > อาการไม่พึงประสงค์จากการใช้ยา (ADR): ${cDrpStats.adr.size} ราย\n`;
+        resultTxt += `       > พบปัญหาซับซ้อนหลายหมวดหมู่: ${cDrpStats.multiple.size} ราย\n\n`;
+
+        resultTxt += `4. รายละเอียดอาการไม่พึงประสงค์ (ADRs Details)\n`;
+        resultTxt += `   - หน้ามืด/ความดันตกขณะเปลี่ยนท่า: ${cAdrDetails.ortho} ครั้ง\n`;
+        resultTxt += `   - มีประวัติหกล้ม: ${cAdrDetails.fall} ครั้ง\n`;
+        resultTxt += `   - คลื่นไส้/อาเจียน: ${cAdrDetails.nvd} ครั้ง\n`;
+        resultTxt += `   - เห็นภาพหลอน/สับสน: ${cAdrDetails.hal} ครั้ง\n`;
+        resultTxt += `   - ท้องผูกรุนแรง: ${cAdrDetails.constip} ครั้ง\n`;
+        resultTxt += `   - ง่วงซึมมากช่วงกลางวัน (EDS): ${cAdrDetails.eds} ครั้ง\n`;
+        resultTxt += `   - นอนไม่หลับ: ${cAdrDetails.insom} ครั้ง\n`;
 
         document.getElementById('kpiResult').value = resultTxt;
-    } catch(e) { alert("ดึงข้อมูลล้มเหลว โปรดตรวจสอบการเชื่อมต่อ"); }
+    } catch(e) { 
+        alert("ดึงข้อมูลล้มเหลว โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ต"); 
+    }
 }
 
 function exportKPIExcel() {
@@ -569,7 +628,7 @@ function exportKPIExcel() {
     let url = URL.createObjectURL(blob);
     let a = document.createElement("a");
     a.href = url;
-    a.download = `KPI_Parkinson_${new Date().toISOString().slice(0,10)}.xls`;
+    a.download = `KPI_Parkinson_Report_${new Date().toISOString().slice(0,10)}.xls`;
     a.click();
 }
 
@@ -620,19 +679,12 @@ async function saveNewPatient() {
     }
 }
 
-// ==========================================
-// 🌟 ระบบแสดงรูปยาผู้ป่วยสำหรับเภสัชกร
-// ==========================================
 function showPatientDrugsModal() {
     let container = document.getElementById('patientDrugsContainer');
-    
-    // ดึงรหัสยา (Drug_ID) ที่มีอยู่บนกราฟ ณ ปัจจุบัน (ไม่ให้ซ้ำกัน)
     let currentMeds = [];
     timelineItems.get().forEach(i => {
         if (i.group !== 'symptoms' && i._drugData && i._drugData.isOriginal) {
-            if (!currentMeds.includes(i._drugData.id)) {
-                currentMeds.push(i._drugData.id);
-            }
+            if (!currentMeds.includes(i._drugData.id)) currentMeds.push(i._drugData.id);
         }
     });
 
@@ -641,17 +693,12 @@ function showPatientDrugsModal() {
     } else {
         let html = "";
         currentMeds.forEach(drugId => {
-            // ไปค้นหาข้อมูลยาในฐานข้อมูล (drugs.json)
             let drugInfo = drugMaster.find(d => d.id === drugId);
             if (drugInfo) {
                 let pillImg = drugInfo.pill_image || "https://cdn-icons-png.flaticon.com/512/822/822092.png";
-                let packImg = drugInfo.pack_image; // ดึงรูปแผงยามาด้วยถ้ามี
-                
-                // สร้างกล่องรูปภาพ
+                let packImg = drugInfo.pack_image; 
                 let imagesHtml = `<img src="${pillImg}" class="drug-img shadow-sm" alt="เม็ดยา">`;
-                if (packImg) {
-                    imagesHtml += `<img src="${packImg}" class="drug-img shadow-sm" alt="แผงยา">`;
-                }
+                if (packImg) imagesHtml += `<img src="${packImg}" class="drug-img shadow-sm" alt="แผงยา">`;
 
                 html += `
                 <div class="drug-card shadow-sm">
@@ -667,8 +714,6 @@ function showPatientDrugsModal() {
         });
         container.innerHTML = html;
     }
-
-    // เรียกเปิด Modal
     let modal = new bootstrap.Modal(document.getElementById('patientDrugsModal'));
     modal.show();
 }
