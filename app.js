@@ -61,11 +61,43 @@ async function loadPatientData() {
             if(data.data.patient.Meal_Lunch) document.getElementById('mealLunch').value = data.data.patient.Meal_Lunch;
             if(data.data.patient.Meal_Dinner) document.getElementById('mealDinner').value = data.data.patient.Meal_Dinner;
 
+            // 🌟 ระบบคัดกรองข้อมูลคนไข้ 30 วันย้อนหลังไปใส่ Modal แจ้งเตือน 🌟
+            let thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            let patientReports = data.data.logs.filter(l => {
+                if (l.Reporter !== 'Patient via LINE') return false;
+                let ts = getTimestampForKPI(l.Date); // ดึงวันที่มาเทียบ 30 วัน
+                return ts >= thirtyDaysAgo;
+            });
+            
+            let btnLogs = document.getElementById('btnPatientLogs');
+            let logContainer = document.getElementById('patientLogsContainer');
+            
+            if(patientReports.length > 0) {
+                btnLogs.classList.remove('d-none');
+                let html = '<ul class="list-group shadow-sm">';
+                patientReports.reverse().forEach(l => {
+                    let timeText = (l.Start_Time !== '-' && l.End_Time !== '-') ? ` <span class="badge bg-secondary ms-2">เวลา: ${l.Start_Time} - ${l.End_Time}</span>` : '';
+                    html += `<li class="list-group-item border-danger mb-2 rounded">
+                        <strong>📅 วันที่บันทึก: ${l.Date}</strong><br>
+                        <span class="text-danger fw-bold">👉 ${l.Event_Type}</span> ${timeText}<br>
+                        <span class="text-muted small">รายละเอียด: ${l.Detail_Note}</span>
+                    </li>`;
+                });
+                html += '</ul>';
+                logContainer.innerHTML = html;
+            } else {
+                btnLogs.classList.add('d-none');
+                logContainer.innerHTML = '<p class="text-center text-muted">ไม่พบประวัติการรายงานอาการด้วยตนเองใน 30 วันที่ผ่านมา</p>';
+            }
+
             document.getElementById('patientInfoCard').classList.remove('d-none');
             document.getElementById('simulationPanel').classList.remove('d-none');
             document.getElementById('btnArchive').classList.remove('d-none');
             
-            renderTimeline(data.data.medications, data.data.logs);
+            // 🌟 สำคัญที่สุด: กรองเอาเฉพาะข้อมูลที่ "ไม่ใช่คนไข้ผ่าน LINE" ไปให้กราฟวาด กราฟจะได้ไม่ช็อก! 🌟
+            let clinicOnlyLogs = data.data.logs.filter(l => l.Reporter !== 'Patient via LINE');
+            renderTimeline(data.data.medications, clinicOnlyLogs);
+
         } else {
             alert(data.message);
         }
@@ -106,9 +138,10 @@ function renderTimeline(meds, logs) {
         
         if(!timelineGroups.get(m.Drug_ID)) timelineGroups.add({ id: m.Drug_ID, content: name, order: 1 });
 
-        let timeStr = m.Time_Take || "08:00"; 
+        let timeStr = String(m.Time_Take || "08:00"); 
         if(timeStr.includes("T")) timeStr = timeStr.split("T")[1].substring(0, 5);
-        else if (timeStr.length > 5) timeStr = timeStr.substring(0, 5);
+        else if (timeStr.length >= 5) timeStr = timeStr.substring(0, 5);
+        else timeStr = "08:00";
 
         let start = new Date(`${todayStr}T${timeStr}:00`).getTime() + (onset*60000);
         let end = start + (dur*3600000);
@@ -127,9 +160,31 @@ function renderTimeline(meds, logs) {
 
     logs.forEach(l => {
         if(l.Event_Type === 'OFF-Time' || l.Event_Type === 'Dyskinesia') {
-            let s = new Date(`${todayStr}T${l.Start_Time.substring(0,5)}:00`);
-            let e = new Date(`${todayStr}T${l.End_Time.substring(0,5)}:00`);
-            timelineItems.add({ id: l.Log_ID, group: 'symptoms', content: l.Event_Type, start: s, end: e, className: l.Event_Type === 'OFF-Time'?'log-off':'log-dyskinesia' });
+            try {
+                let st = String(l.Start_Time || "");
+                let en = String(l.End_Time || "");
+                
+                if(st.length >= 5 && en.length >= 5 && !st.includes('-') && !en.includes('-')) {
+                    let s = new Date(`${todayStr}T${st.substring(0,5)}:00`);
+                    let e = new Date(`${todayStr}T${en.substring(0,5)}:00`);
+                    
+                    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+                        if (s.getTime() >= e.getTime()) e = new Date(e.getTime() + 86400000); 
+                        
+                        timelineItems.add({ 
+                            id: l.Log_ID, 
+                            group: 'symptoms', 
+                            content: l.Event_Type, 
+                            start: s, 
+                            end: e, 
+                            className: l.Event_Type === 'OFF-Time' ? 'log-off' : 'log-dyskinesia',
+                            editable: { remove: true }
+                        });
+                    }
+                }
+            } catch(err) {
+                console.warn("ข้ามข้อมูลบรรทัดที่มีปัญหา:", l);
+            }
         }
     });
 
@@ -241,7 +296,6 @@ function calculateLEDD(medsList) {
     let totalLdopa = 0;
     let breakdowns = [];
 
-    // 1. จัดกลุ่มยาตามเวลากิน
     let timeGroups = {};
     medsList.forEach(m => {
         let t = m.Time_Take || "00:00";
@@ -249,10 +303,8 @@ function calculateLEDD(medsList) {
         timeGroups[t].push(m);
     });
 
-    // 2. คำนวณยาในแต่ละมื้อ
     for (let t in timeGroups) {
         let medsAtTime = timeGroups[t];
-        
         let hasComtan = medsAtTime.some(m => {
             let n = (m.Trade_Name || m.name || "").toLowerCase();
             return n.includes('comtan') || n.includes('entacapone');
@@ -526,18 +578,11 @@ function addManualSymptom() { let type = document.getElementById('symType').valu
 function archiveOldLogs() { if(confirm("ล้างกราฟ?")) { fetch(API_URL, {method:'POST', body:JSON.stringify({action:'archiveLogs', PD_No:currentPatientId})}).then(()=>loadPatientData()); } }
 function saveMedsToDB() { if(confirm("บันทึกยา?")) { let m=[]; timelineItems.get().forEach(i=>{ if(i.group!=='symptoms' && i._drugData?.isOriginal) m.push({Drug_ID:i._drugData.id, Dose:i._drugData.Dose, Time_Take:i._drugData.Time_Take||"08:00"}); }); fetch(API_URL, {method:'POST', body:JSON.stringify({action:'updatePatientMeds', PD_No:currentPatientId, meds:m})}).then(()=>alert("บันทึกแล้ว")); } }
 
-// ==========================================
-// 🌟 ระบบลงทะเบียนผู้ป่วยใหม่
-// ==========================================
-
 function showNewPatientModal() {
-    // ล้างค่าเก่าในฟอร์มทิ้งก่อนเปิด
     document.getElementById('npName').value = "";
     document.getElementById('npAge').value = "";
     document.getElementById('npHN').value = "";
     document.getElementById('npPhone').value = "";
-    
-    // เรียกเปิด Modal ของ Bootstrap
     let modal = new bootstrap.Modal(document.getElementById('newPatientModal'));
     modal.show();
 }
@@ -548,9 +593,7 @@ async function saveNewPatient() {
     let hn = document.getElementById('npHN').value.trim();
     let phone = document.getElementById('npPhone').value.trim();
 
-    if (!name || !age || !hn || !phone) {
-        return alert("⚠️ กรุณากรอกข้อมูลให้ครบถ้วนทุกช่องครับ");
-    }
+    if (!name || !age || !hn || !phone) return alert("⚠️ กรุณากรอกข้อมูลให้ครบถ้วนทุกช่องครับ");
 
     let btn = document.getElementById('btnSavePatient');
     btn.innerHTML = "⏳ กำลังบันทึก...";
@@ -559,34 +602,19 @@ async function saveNewPatient() {
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
-            body: JSON.stringify({
-                action: 'createNewPatient',
-                name: name,
-                age: age,
-                // 🌟 เติมเครื่องหมาย ' (Single Quote) ลงไปก่อนส่งข้อมูล เพื่อกันเลข 0 หาย!
-                hn: "'" + hn,
-                phone: "'" + phone
-            })
+            body: JSON.stringify({ action: 'createNewPatient', name: name, age: age, hn: "'" + hn, phone: "'" + phone })
         });
         const data = await response.json();
         
         if (data.status === 'success') {
             alert(`✅ สร้างโปรไฟล์สำเร็จ!\nรหัสพาร์กินสันของคนไข้คือ: ${data.pd_no}`);
-            
-            // ปิด Modal
             bootstrap.Modal.getInstance(document.getElementById('newPatientModal')).hide();
-            
-            // 🌟 นำ HN ตัวออริจินัล (ที่ไม่มี ') ไปใส่ในช่องค้นหาเพื่อโหลดกราฟ
             document.getElementById('pdInput').value = hn;
             loadPatientData(); 
-
-        } else {
-            alert("❌ เกิดข้อผิดพลาด: " + data.message);
-        }
+        } else alert("❌ เกิดข้อผิดพลาด: " + data.message);
     } catch (e) {
         alert("❌ การเชื่อมต่อล้มเหลว กรุณาตรวจสอบอินเทอร์เน็ต");
     } finally {
-        // คืนค่าปุ่มกลับสู่สภาพเดิม
         btn.innerHTML = "💾 บันทึกข้อมูล";
         btn.disabled = false;
     }
