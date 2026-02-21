@@ -6,7 +6,7 @@
       "duration": 5, 
       "type": "L-Dopa (CR)",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     },
     { 
       "id": "D02", 
@@ -15,7 +15,7 @@
       "duration": 2.5, 
       "type": "L-Dopa (Fast)",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     },
     { 
       "id": "D03", 
@@ -24,7 +24,7 @@
       "duration": 3.5, 
       "type": "L-Dopa (IR)",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     },
     { 
       "id": "D04", 
@@ -33,7 +33,7 @@
       "duration": 4, 
       "type": "L-Dopa (IR)",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     },
     { 
       "id": "D05", 
@@ -42,7 +42,7 @@
       "duration": 23.5, 
       "type": "Agonist (ER)",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     },
     { 
       "id": "D06", 
@@ -51,7 +51,7 @@
       "duration": 6, 
       "type": "Agonist",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     },
     { 
       "id": "D07", 
@@ -60,7 +60,7 @@
       "duration": 1.5, 
       "type": "COMT",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     },
     { 
       "id": "D08", 
@@ -69,7 +69,7 @@
       "duration": 6, 
       "type": "Anti-Choc",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     },
     { 
       "id": "D09", 
@@ -78,6 +78,6 @@
       "duration": 23.5, 
       "type": "MAO-B",
       "pill_image": "ใส่ลิงก์รูปเม็ดยาตรงนี้.jpg",
-      "package_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
+      "pack_image": "ใส่ลิงก์รูปขวดยาตรงนี้.jpg"
     }
 ]
