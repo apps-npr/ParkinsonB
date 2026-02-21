@@ -15,22 +15,18 @@ document.addEventListener('DOMContentLoaded', () => {
         d.forEach(x=>s.add(new Option(x.name,x.id))); 
     }).catch(e=>alert("โหลดฐานข้อมูลยาล้มเหลว"));
 
-    // ตัวช่วยพิมพ์เวลา (Smart Time Input) พิมพ์ 0800 เป็น 08:00 อัตโนมัติ
+    // ตัวช่วยพิมพ์เวลา (Smart Time Input)
     document.querySelectorAll('.time-input').forEach(inp => {
         inp.addEventListener('input', function(e) {
             let v = this.value.replace(/[^0-9]/g, '');
-            if (v.length >= 3) {
-                v = v.substring(0, 2) + ':' + v.substring(2, 4);
-            }
+            if (v.length >= 3) v = v.substring(0, 2) + ':' + v.substring(2, 4);
             this.value = v;
         });
         inp.addEventListener('blur', function() {
             let v = this.value.replace(/[^0-9]/g, '');
-            if(v.length === 0) return; // อนุญาตให้เว้นว่างได้
+            if(v.length === 0) return; 
             if(v.length === 3) v = '0' + v; 
-            if(v.length === 4) {
-                this.value = v.substring(0, 2) + ':' + v.substring(2, 4);
-            }
+            if(v.length === 4) this.value = v.substring(0, 2) + ':' + v.substring(2, 4);
         });
     });
 });
@@ -61,11 +57,13 @@ async function loadPatientData() {
             if(data.data.patient.Meal_Lunch) document.getElementById('mealLunch').value = data.data.patient.Meal_Lunch;
             if(data.data.patient.Meal_Dinner) document.getElementById('mealDinner').value = data.data.patient.Meal_Dinner;
 
-            // 🌟 ระบบคัดกรองข้อมูลคนไข้ 30 วันย้อนหลังไปใส่ Modal แจ้งเตือน 🌟
             let thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
             let patientReports = data.data.logs.filter(l => {
-                if (l.Reporter !== 'Patient via LINE') return false;
-                let ts = getTimestampForKPI(l.Date); // ดึงวันที่มาเทียบ 30 วัน
+                let rep = String(l.Reporter || l.reporter || l['ผู้บันทึก'] || Object.values(l)[6] || "");
+                if (!rep.includes('Patient')) return false;
+                
+                let dateVal = l.Date || l.date || l['วันที่'] || l[' Date'] || l['Date '] || Object.values(l)[2];
+                let ts = getTimestampForKPI(dateVal); 
                 return ts >= thirtyDaysAgo;
             });
             
@@ -76,11 +74,14 @@ async function loadPatientData() {
                 btnLogs.classList.remove('d-none');
                 let html = '<ul class="list-group shadow-sm">';
                 patientReports.reverse().forEach(l => {
+                    let ev = l.Event_Type || Object.values(l)[3];
+                    let note = l.Detail_Note || Object.values(l)[7];
+                    let dateStr = l.Date || Object.values(l)[2];
                     let timeText = (l.Start_Time !== '-' && l.End_Time !== '-') ? ` <span class="badge bg-secondary ms-2">เวลา: ${l.Start_Time} - ${l.End_Time}</span>` : '';
                     html += `<li class="list-group-item border-danger mb-2 rounded">
-                        <strong>📅 วันที่บันทึก: ${l.Date}</strong><br>
-                        <span class="text-danger fw-bold">👉 ${l.Event_Type}</span> ${timeText}<br>
-                        <span class="text-muted small">รายละเอียด: ${l.Detail_Note}</span>
+                        <strong>📅 วันที่บันทึก: ${dateStr}</strong><br>
+                        <span class="text-danger fw-bold">👉 ${ev}</span> ${timeText}<br>
+                        <span class="text-muted small">รายละเอียด: ${note}</span>
                     </li>`;
                 });
                 html += '</ul>';
@@ -94,8 +95,10 @@ async function loadPatientData() {
             document.getElementById('simulationPanel').classList.remove('d-none');
             document.getElementById('btnArchive').classList.remove('d-none');
             
-            // 🌟 กรองเอาเฉพาะข้อมูลที่ "ไม่ใช่คนไข้ผ่าน LINE" ไปให้กราฟวาด กราฟจะได้ไม่ช็อก!
-            let clinicOnlyLogs = data.data.logs.filter(l => l.Reporter !== 'Patient via LINE');
+            let clinicOnlyLogs = data.data.logs.filter(l => {
+                let rep = String(l.Reporter || l.reporter || l['ผู้บันทึก'] || Object.values(l)[6] || "");
+                return !rep.includes('Patient');
+            });
             renderTimeline(data.data.medications, clinicOnlyLogs);
 
         } else {
@@ -159,10 +162,11 @@ function renderTimeline(meds, logs) {
     });
 
     logs.forEach(l => {
-        if(l.Event_Type === 'OFF-Time' || l.Event_Type === 'Dyskinesia') {
+        let ev = l.Event_Type || Object.values(l)[3];
+        if(ev === 'OFF-Time' || ev === 'Dyskinesia') {
             try {
-                let st = String(l.Start_Time || "");
-                let en = String(l.End_Time || "");
+                let st = String(l.Start_Time || Object.values(l)[4] || "");
+                let en = String(l.End_Time || Object.values(l)[5] || "");
                 
                 if(st.length >= 5 && en.length >= 5 && !st.includes('-') && !en.includes('-')) {
                     let s = new Date(`${todayStr}T${st.substring(0,5)}:00`);
@@ -172,12 +176,12 @@ function renderTimeline(meds, logs) {
                         if (s.getTime() >= e.getTime()) e = new Date(e.getTime() + 86400000); 
                         
                         timelineItems.add({ 
-                            id: l.Log_ID, 
+                            id: l.Log_ID || Object.values(l)[0], 
                             group: 'symptoms', 
-                            content: l.Event_Type, 
+                            content: ev, 
                             start: s, 
                             end: e, 
-                            className: l.Event_Type === 'OFF-Time' ? 'log-off' : 'log-dyskinesia',
+                            className: ev === 'OFF-Time' ? 'log-off' : 'log-dyskinesia',
                             editable: { remove: true }
                         });
                     }
@@ -371,12 +375,11 @@ function calculateLEDD(medsList) {
     };
 }
 
-// 🌟 อัปเดต: สั่งบันทึก Log "เข้ารับบริการ" ทันทีที่กดพิมพ์ใบ A5
 function printSystem() {
     let now = new Date();
     let todayThaiStr = now.getDate() + "/" + (now.getMonth() + 1) + "/" + (now.getFullYear() + 543);
     
-    // ยิง Log ไปเก็บในฐานข้อมูลเงียบๆ ไม่ต้องแจ้งเตือนคนใช้
+    // แอบส่ง Log เข้า Database เพื่อใช้เป็นตัวนับยอด Visit ของคลินิก
     fetch(API_URL, {
         method: 'POST',
         body: JSON.stringify({
@@ -387,7 +390,7 @@ function printSystem() {
             Start_Time: '-',
             End_Time: '-',
             Reporter: 'Pharmacist',
-            Detail_Note: 'มารับบริการ/ปรินต์ใบสรุปแผนการรักษา'
+            Detail_Note: 'เข้ารับบริการที่คลินิก/ปรินต์ใบสรุปแผนการรักษา'
         })
     });
 
@@ -492,32 +495,53 @@ function generateReport() {
     document.getElementById('reportContent').innerHTML = html;
 }
 
-// 🌟 ตัวแปลงวันที่แบบใหม่ ที่ทนทานต่อการเข้าใจผิดของเบราว์เซอร์ 🌟
+// 🌟🌟🌟 ตัวแปลงวันที่แบบใหม่ ทนทานต่อทุก Format ใน Google Sheet! 🌟🌟🌟
 function getTimestampForKPI(dateVal) {
     if(!dateVal) return 0;
     let dStr = String(dateVal).trim();
     
-    // กรณีพบตัวคั่น / (เช่น 21/2/2569) ให้บังคับแยกคำนวณเอง ป้องกัน JS พลาด!
+    // 1. ลองให้เบราว์เซอร์จัดการเองก่อน (กรณี Sheet แอบส่งมาเป็น ISO Date เช่น 2026-02-21)
+    let testDate = new Date(dStr);
+    if (!isNaN(testDate.getTime()) && dStr.includes('-')) {
+        return testDate.getTime();
+    }
+
+    // 2. กรณีเป็น Format วันที่ของไทย หรือมีเครื่องหมาย / (เช่น 21/2/2569 หรือ 2/21/2026)
     if(dStr.includes('/')) {
-        let p = dStr.split(' ')[0].split('/'); // ตัดเวลาทิ้ง
+        let p = dStr.split(' ')[0].split('/'); 
         if (p.length >= 3) {
-            let d = parseInt(p[0], 10);
-            let m = parseInt(p[1], 10) - 1;
-            let y = parseInt(p[2], 10);
-            if(y > 2500) y -= 543; // แปลง พ.ศ. เป็น ค.ศ.
+            let p0 = parseInt(p[0], 10);
+            let p1 = parseInt(p[1], 10);
+            let p2 = parseInt(p[2], 10);
+            
+            let d, m, y;
+            
+            // ตรวจหาว่าตกลงอันไหนคือ ปี, เดือน, วัน กันแน่!
+            if (p2 > 1000) {
+                y = p2;
+                if (y > 2500) y -= 543; // แปลง พ.ศ. เป็น ค.ศ.
+                
+                // เช็คว่า Sheet สลับเป็น MM/DD/YYYY หรือไม่
+                if (p0 > 12) { d = p0; m = p1 - 1; }
+                else if (p1 > 12) { m = p0 - 1; d = p1; }
+                else { d = p0; m = p1 - 1; } // ค่าเริ่มต้นให้เป็น DD/MM/YYYY ตามปกติ
+            } else {
+                // เผื่อเป็น YYYY/MM/DD
+                y = p0;
+                if (y > 2500) y -= 543;
+                m = p1 - 1;
+                d = p2;
+            }
+
             let parsed = new Date(y, m, d);
             if(!isNaN(parsed.getTime())) return parsed.getTime();
         }
     }
     
-    // ถ้าเป็นแบบ 2026-02-21 (ISO) ให้เบราว์เซอร์จัดการปกติ
-    let testDate = new Date(dStr);
-    if(!isNaN(testDate.getTime())) return testDate.getTime();
-    
-    return 0;
+    return 0; // ถ้าอ่านไม่ออกจริงๆ ให้ตีเป็น 0
 }
 
-// 🌟 ระบบ KPI อัปเกรดใหม่ (อิงตามรายงาน Ambu จริง) 🌟
+// 🌟 ระบบ KPI อัปเกรดใหม่ 🌟
 async function fetchKPIReport() {
     let startInput = document.getElementById('kpiStart').value;
     let endInput = document.getElementById('kpiEnd').value;
@@ -532,48 +556,60 @@ async function fetchKPIReport() {
         const data = await res.json();
         
         let targetLogs = data.logs.filter(l => {
-            let logTs = getTimestampForKPI(l.Date);
+            // 🛡️ ป้องกันบั๊กชื่อคอลัมน์ไม่ตรงใน Sheet
+            let dateVal = l.Date || l.date || l['วันที่'] || l[' Date'] || l['Date '] || Object.values(l)[2];
+            let logTs = getTimestampForKPI(dateVal);
             return logTs >= startTs && logTs <= endTs;
         });
         
-        let clinicVisitsMap = new Set(); // เก็บ Visit หน้างาน (ตัดซ้ำใน 1 วัน)
-        let liffVisitsMap = new Set();   // เก็บยอดส่งจาก LINE OA
-        let uniquePatientsAny = new Set(); // ยอดผู้ป่วยทั้งหมด
+        // 🚨 กรณีที่ค้นหาแล้วไม่เจอข้อมูลเลย (ป้องกันการงงว่าทำไม 0 หมด)
+        if (targetLogs.length === 0) {
+            let sampleDate = data.logs.length > 0 ? (data.logs[data.logs.length-1].Date || Object.values(data.logs[data.logs.length-1])[2]) : "ไม่มีประวัติในระบบ";
+            document.getElementById('kpiResult').value = `⚠️ ไม่พบข้อมูลในช่วงเวลาที่คุณหมอเลือกครับ\n\n--- ข้อมูลสำหรับการตรวจสอบ ---\nประวัติล่าสุดใน Sheet คือวันที่: ${sampleDate}\nรูปแบบวันที่กำลังค้นหา: ${startInput} ถึง ${endInput}\n\n*ข้อแนะนำ: ลองขยายช่วงเวลาให้กว้างขึ้นครับ*`;
+            return;
+        }
+
+        let clinicVisitsMap = new Set(); 
+        let liffVisitsMap = new Set();   
+        let uniquePatientsAny = new Set(); 
         
         let cMotorStats = { off: new Set(), dys: new Set(), delOn: new Set(), mornAki: new Set() };
         let cDrpStats = { any: new Set(), adr: new Set(), nc: new Set(), nd: new Set(), di: new Set(), multiple: new Set() };
         let cAdrDetails = { ortho: 0, fall: 0, nvd: 0, hal: 0, insom: 0, constip: 0, eds: 0 };
 
         targetLogs.forEach(l => {
-            let pd = l.PD_No;
-            let ev = String(l.Event_Type || "");
-            let note = String(l.Detail_Note || "");
-            let rep = String(l.Reporter || "");
-            let pd_date = pd + "|" + l.Date;
+            // 🛡️ ดึงข้อมูลแบบ Robust
+            let pd = String(l.PD_No || l.pd_no || l['HN'] || Object.values(l)[1] || "");
+            let ev = String(l.Event_Type || l.event_type || l['ประเภท'] || Object.values(l)[3] || "");
+            let note = String(l.Detail_Note || l.detail_note || l['รายละเอียด'] || Object.values(l)[7] || "");
+            let rep = String(l.Reporter || l.reporter || l['ผู้บันทึก'] || Object.values(l)[6] || "");
+            let dateVal = String(l.Date || l.date || l['วันที่'] || Object.values(l)[2] || "");
+            let pd_date = pd + "|" + dateVal;
 
+            if(!pd) return; // ข้ามแถวที่ว่าง
             uniquePatientsAny.add(pd);
 
-            // 1. นับจำนวนการรับบริการ (หน้างาน vs LINE)
-            if (ev === 'Clinic_Visit' || ev === 'DRPs/ADR Check' || note.includes('เข้ารับบริการ') || rep === 'Pharmacist') {
+            // 1. นับจำนวนการรับบริการ
+            if (ev.includes('Clinic_Visit') || ev.includes('DRPs') || note.includes('เข้ารับบริการ') || rep.includes('Pharmacist')) {
                 clinicVisitsMap.add(pd_date);
             }
-            if (ev === 'LIFF_Submission' || rep === 'Patient via LINE') {
+            if (ev.includes('LIFF') || rep.includes('Patient')) {
                 liffVisitsMap.add(pd_date);
             }
 
-            // 2. นับ Motor Complications (นับรวมทั้งหมด)
-            if (ev === 'OFF-Time' || note.includes('Wearing-off') || note.includes('OFF-Time')) cMotorStats.off.add(pd);
-            if (ev === 'Dyskinesia' || note.includes('Dyskinesia')) cMotorStats.dys.add(pd);
-            if (note.includes('Delayed ON') || note.includes('ยาออกฤทธิ์ช้า')) cMotorStats.delOn.add(pd);
-            if (note.includes('Morning Akinesia') || note.includes('ตื่นเช้ามามีอาการแข็งเกร็ง')) cMotorStats.mornAki.add(pd);
+            // 2. นับ Motor Complications 
+            if (ev.includes('OFF') || note.includes('Wearing-off') || note.includes('OFF-Time')) cMotorStats.off.add(pd);
+            if (ev.includes('Dys') || note.includes('Dyskinesia')) cMotorStats.dys.add(pd);
+            if (note.includes('Delayed ON') || note.includes('ออกฤทธิ์ช้า')) cMotorStats.delOn.add(pd);
+            if (note.includes('Morning Akinesia') || note.includes('ตื่นเช้ามา')) cMotorStats.mornAki.add(pd);
 
             // 3. นับหมวดหมู่ DRPs
             if (note.includes('Class: ')) {
                 cDrpStats.any.add(pd);
-                if(note.includes('Adverse drug reaction')) cDrpStats.adr.add(pd);
-                if(note.includes('Non-Compliance')) cDrpStats.nc.add(pd);
-                if(note.includes('Need for additional')) cDrpStats.nd.add(pd);
-                if(note.includes('Drug interaction')) cDrpStats.di.add(pd);
+                if(note.includes('Adverse drug reaction') || note.includes('ADR')) cDrpStats.adr.add(pd);
+                if(note.includes('Non-Compliance') || note.includes('NC')) cDrpStats.nc.add(pd);
+                if(note.includes('Need for additional') || note.includes('ND')) cDrpStats.nd.add(pd);
+                if(note.includes('Drug interaction') || note.includes('DI')) cDrpStats.di.add(pd);
                 if(note.includes('พบหลายปัญหา')) cDrpStats.multiple.add(pd);
             }
 
@@ -582,7 +618,7 @@ async function fetchKPIReport() {
             if (note.includes('หกล้ม') || note.includes('ทรงตัวไม่อยู่')) cAdrDetails.fall++;
             if (note.includes('คลื่นไส้') || note.includes('อาเจียน')) cAdrDetails.nvd++;
             if (note.includes('ภาพหลอน') || note.includes('สับสน')) cAdrDetails.hal++;
-            if (note.includes('นอนไม่หลับ') || note.includes('นอนละเมอ') || note.includes('ฝันร้าย')) cAdrDetails.insom++;
+            if (note.includes('นอนไม่หลับ') || note.includes('ละเมอ') || note.includes('ฝันร้าย')) cAdrDetails.insom++;
             if (note.includes('ท้องผูก')) cAdrDetails.constip++;
             if (note.includes('ง่วงซึม')) cAdrDetails.eds++;
         });
@@ -630,7 +666,7 @@ async function fetchKPIReport() {
 
 function exportKPIExcel() {
     let text = document.getElementById('kpiResult').value;
-    if(!text || text.includes('กำลังดึงข้อมูล')) return alert("กรุณาดึงข้อมูลให้เสร็จก่อนส่งออก");
+    if(!text || text.includes('กำลังดึงข้อมูล') || text.includes('ไม่พบข้อมูล')) return alert("กรุณาดึงข้อมูลให้เสร็จก่อนส่งออก");
 
     let rows = text.split('\n').map(r => `<tr><td style="font-family: 'Sarabun', sans-serif;">${r}</td></tr>`).join('');
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body><table>${rows}</table></body></html>`;
@@ -643,7 +679,6 @@ function exportKPIExcel() {
     a.click();
 }
 
-// 🌟 อัปเดต: การสร้างฟอร์แมตวันที่ภาษาไทยให้กับ Log ทุกรูปแบบ
 function addSimulatedMed() { const d=document, i=d.getElementById('simDrug').value, o=d.getElementById('simDose').value, t=d.getElementById('simTime').value; if(!t)return; const inf=drugMaster.find(x=>x.id===i); const td=new Date().toISOString().split('T')[0]; const s=new Date(td+'T'+t+':00').getTime()+(inf.onset*60000); const e=s+(inf.duration*3600000); const mid=new Date(td+'T23:59:59').getTime(); if(!timelineGroups.get(i)) timelineGroups.add({id:i, content:inf.name, order:1}); let sub=i; let commonData = {id:i, Trade_Name:inf.name, Dose:o, onset:inf.onset, Time_Take:t, isOriginal:true}; if(e>mid) { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(mid), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); timelineItems.add({id:`M_W_${Math.random()}`, group:i, content:'(ต่อ)', start:new Date(td+'T00:00:00'), end:new Date(new Date(td+'T00:00:00').getTime()+(e-mid)), className:getDrugClass(inf.type), subgroup:sub, style:'opacity:0.7;border-style:dashed;', _drugData:{id:i, isWrapped:true}}); } else { timelineItems.add({id:`M_${Math.random()}`, group:i, content:o, start:new Date(s), end:new Date(e), className:getDrugClass(inf.type), subgroup:sub, _drugData:commonData}); } }
 function addManualSymptom() { 
     let type = document.getElementById('symType').value; 
